@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/* Leitidee: eine Seite aus einem linierten Schulheft.
+   Tinte (Königsblau) für alles, was das Kind tut; Rotstift nur für Korrekturen. */
+:root {
+  --paper: #f7f9fc;
+  --rule: #cad7ea;
+  --margin: #e6a3ab;
+  --ink: #1d3c8f;
+  --ink-soft: #4a63a8;
+  --pencil: #545d6b;
+  --red: #c8283a;
+  --green: #23855a;
+  --line: 2rem; /* Zeilenabstand des Heftes */
+  --font: "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font);
+  font-size: 1.125rem;
+  line-height: var(--line);
+  color: var(--pencil);
+  background-color: var(--paper);
+  /* Linien + Randlinie des Heftes */
+  background-image:
+    linear-gradient(to right, transparent 2.25rem, var(--margin) 2.25rem, var(--margin) calc(2.25rem + 1px), transparent calc(2.25rem + 1px)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px), var(--rule) var(--line));
+  background-attachment: local;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.page {
+  max-width: 34rem;
+  padding: var(--line) 1.25rem calc(var(--line) * 2) 3.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--line);
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+  line-height: calc(var(--line) * 1.5);
+  font-weight: 700;
+  color: var(--ink);
+}
+.subtitle { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--ink); }
+.lead { margin: 0; }
+.hint { margin: 0; font-size: 1rem; }
+
+.stack { display: flex; flex-direction: column; gap: 1rem; }
+
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field > span { font-size: 1rem; }
+.field input,
+.field select {
+  font: inherit;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--ink-soft);
+  padding: 0.25rem 0;
+  border-radius: 0;
+}
+.field input:focus,
+.field select:focus { outline: none; border-bottom-color: var(--ink); border-bottom-width: 3px; }
+.code-input { font-size: 1.75rem !important; letter-spacing: 0.3em; }
+
+.btn {
+  font: inherit;
+  font-weight: 700;
+  color: #fff;
+  background: var(--ink);
+  border: 0;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  min-height: 3rem;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.6; cursor: wait; }
+
+.btn-quiet {
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  background: transparent;
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  min-height: 2.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.link {
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.error { margin: 0; color: var(--red); font-weight: 700; }
+
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+/* Profilauswahl */
+.kid-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
+.kid {
+  display: flex;
+  flex-direction: column;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--ink);
+  border-radius: 0.75rem;
+  background: var(--paper);
+  text-decoration: none;
+}
+.kid-name { font-size: 1.5rem; font-weight: 700; color: var(--ink); }
+.kid-unit { font-size: 1rem; color: var(--pencil); }
+.add-kid { padding-top: var(--line); }
+
+/* Units */
+.back { font-size: 1rem; }
+.unit-list { list-style: none; margin: 0; padding: 0; }
+.unit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: calc(var(--line) * 2);
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-left: 4px solid transparent;
+}
+.unit-text { display: flex; flex-direction: column; }
+.unit-title { color: var(--ink); font-weight: 700; line-height: 1.4; }
+.unit-meta { font-size: 0.95rem; line-height: 1.4; }
+.unit.is-current { border-left-color: var(--ink); background: rgba(29, 60, 143, 0.06); }
+.unit.is-ahead .unit-title { color: var(--ink-soft); font-weight: 400; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
