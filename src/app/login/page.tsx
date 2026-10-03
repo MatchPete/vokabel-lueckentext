@@ -9,7 +9,7 @@ export default function LoginPage() {
   const [state, action, pending] = useActionState(signIn, initial);
 
   return (
-    <main className="page">
+    <main className="sheet">
       <h1 className="title">Vokabelheft</h1>
 
       <form action={action} className="stack">
