@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { recordCardReview } from "@/app/actions";
 import Confetti from "./Confetti";
+import SpeakButton, { AutoSpeakToggle, useAutoSpeak } from "./SpeakButton";
+import { speak, unlockSpeech } from "@/lib/speech";
 import { grade as gradeAnswer, type Result } from "@/lib/exercise";
 import { buildCramRound, buildRound, cardAnswer, gradeFor, isNew, nextDueDate, type CardWord, type Grade } from "@/lib/cards";
 
@@ -40,6 +42,14 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   const current = queue[0];
   const word = current ? byId.get(current.id) : undefined;
   const sol = word ? cardAnswer(word) : null;
+  const autoSpeak = useAutoSpeak();
+
+  // Vorlesen direkt im Tipp-Ereignis auslösen (zuverlässiger auf iPhone/Safari als zeitversetzt)
+  function say(id: string | undefined) {
+    if (!autoSpeak || !id) return;
+    const w = byId.get(id);
+    if (w) speak(w.en);
+  }
 
   useEffect(() => {
     if (phase !== "card") return;
@@ -48,6 +58,8 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   }, [phase, current, result]);
 
   function start(list: CardWord[]) {
+    unlockSpeech();
+    if (list[0] && isNew(list[0])) say(list[0].id);
     setRound(list);
     setQueue(list.map((w) => ({ id: w.id, kind: isNew(w) ? "learn" : "ask" })));
     setGraded({});
@@ -70,6 +82,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     }
     setQueue(nextQueue);
     setShownAt(Date.now());
+    if (nextQueue[0].kind === "learn") say(nextQueue[0].id);
   }
 
   function insertAt(list: Item[], item: Item, pos: number): Item[] {
@@ -87,6 +100,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     if (!word || !sol || result !== null) return;
     const r = gradeAnswer(given, sol);
     setResult(r);
+    say(word.id);
 
     // Nur die erste Abfrage eines Wortes in dieser Runde zählt für die Planung
     if (!(word.id in graded)) {
@@ -98,7 +112,8 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     }
     if (r === "correct") {
       setFinished((f) => new Set(f).add(word.id));
-      setTimeout(() => continueAfter("correct"), 700);
+      // Mit Vorlesen etwas länger stehen lassen, damit die Aussprache nicht abgeschnitten wird
+      setTimeout(() => continueAfter("correct"), autoSpeak ? 1500 : 700);
     }
   }
 
@@ -169,6 +184,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
             Alle Wörter üben (vor einer Abfrage)
           </button>
         )}
+        <AutoSpeakToggle />
       </section>
     );
   }
@@ -231,7 +247,10 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
       {current.kind === "learn" ? (
         <section className="flashcard is-learn">
           <p className="eyebrow">Neues Wort</p>
-          <p className="fc-en" lang="en">{word.en}</p>
+          <div className="fc-row">
+            <p className="fc-en" lang="en">{word.en}</p>
+            <SpeakButton text={word.en} />
+          </div>
           <p className="fc-de">{word.de}</p>
           <button type="button" className="btn" onClick={learnDone} autoFocus>
             Gemerkt
@@ -270,7 +289,12 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
             )}
           </form>
 
-          {result === "correct" && <p className="ok fc-feedback">Richtig!</p>}
+          {result === "correct" && (
+            <div className="fc-row">
+              <p className="ok fc-feedback">Richtig!</p>
+              <SpeakButton text={word.en} />
+            </div>
+          )}
 
           {result && result !== "correct" && (
             <form
@@ -283,7 +307,10 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
               <p className={result === "almost" ? "fc-feedback warn" : "fc-feedback error"}>
                 {result === "almost" ? "Fast! So schreibt man es:" : "So heißt es:"}
               </p>
-              <p className="fc-solution" lang="en">{sol.answer}</p>
+              <div className="fc-row">
+                <p className="fc-solution" lang="en">{sol.answer}</p>
+                <SpeakButton text={word.en} />
+              </div>
               <label className="field">
                 <span>Schreib es einmal ab</span>
                 <input

@@ -381,6 +381,15 @@ body {
 .fc-correction { display: flex; flex-direction: column; gap: 0.75rem; }
 .fc-solution { margin: 0; font-size: 1.75rem; font-weight: 700; color: var(--ink); }
 .card-missed { min-height: var(--line); }
+.fc-row { display: flex; align-items: center; gap: 0.75rem; }
+.speak-btn {
+  flex-shrink: 0; width: 2.75rem; height: 2.75rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink); background: rgba(29, 60, 143, 0.08); border: 0; cursor: pointer;
+}
+.speak-btn:active { background: rgba(29, 60, 143, 0.18); }
+.auto-speak { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; color: var(--pencil); cursor: pointer; }
+.auto-speak input { width: 1.2rem; height: 1.2rem; accent-color: var(--ink); }
 .fc-override { font-size: 0.95rem; color: var(--pencil); align-self: center; }
 
 /* Vokabeln auswählen / verschieben */
@@ -435,6 +444,35 @@ body {
 .bar { width: 100%; max-width: 1.25rem; background: #c9d4ea; border-radius: 0.25rem 0.25rem 0 0; display: flex; align-items: flex-end; min-height: 2px; }
 .bar-correct { width: 100%; background: var(--ink); border-radius: 0.25rem 0.25rem 0 0; }
 .bar-label { font-size: 0.7rem; color: var(--pencil); }
+
+/* Tablets: alles etwas größer, Blatt breiter, Ränder bleiben sichtbar */
+@media (min-width: 700px) {
+  html { font-size: 112.5%; }
+  .sheet { max-width: min(42rem, calc(100% - 3rem)); }
+  .flashcard { padding: 2rem 2rem; }
+  .worksheet { padding: 1.5rem 2rem 2rem; }
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1000px) {
+  html { font-size: 125%; }
+}
+
+/* Kamera nie höher als der Bildschirm, damit der Auslöser sichtbar bleibt */
+.capture { display: flex; flex-direction: column; gap: var(--line); }
+.camera { max-height: 62dvh; width: 100%; }
+/* Querformat: Kamerabild links, Auslöser und Vorschau rechts daneben */
+@media (orientation: landscape) and (min-width: 600px) {
+  .capture { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1rem 1.25rem; align-items: start; }
+  .capture > .camera { grid-column: 1; grid-row: 1 / span 3; aspect-ratio: 4 / 3; max-height: calc(100dvh - 8rem); }
+  .capture > .camera-actions { grid-column: 2; grid-row: 1; }
+  .capture > .camera-actions { flex-direction: column; align-items: flex-start; }
+  .capture > .hint, .capture > section:not(.camera) { grid-column: 2; }
+  .capture .thumbs { grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr)); gap: 0.6rem; }
+}
+/* Handy quer: wenig Höhe, daher Tipp ausblenden */
+@media (orientation: landscape) and (max-height: 500px) {
+  .capture > .hint { display: none; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

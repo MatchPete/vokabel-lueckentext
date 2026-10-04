@@ -264,7 +264,7 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
   }
 
   return (
-    <>
+    <div className="capture">
       <section className="camera">
         <video ref={videoRef} playsInline muted className={cameraOn ? "" : "is-hidden"} />
         {cameraOn && <div className="camera-frame" aria-hidden />}
@@ -304,6 +304,6 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
           </button>
         </section>
       )}
-    </>
+    </div>
   );
 }

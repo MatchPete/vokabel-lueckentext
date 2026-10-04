@@ -1,10 +1,10 @@
 // Erzeugt einen Lückentext mit Claude. Läuft nur auf dem Server.
 import type Anthropic from "@anthropic-ai/sdk";
 import { aiClient, AiConfigError } from "./ai";
+import { chooseLevel, CORE_WORDS, knownWordSet, LEVELS, unknownWords, type Level } from "./level";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { baseForms, FORM_HINTS, normalize, type GapForm, type Segment, type TextType } from "./exercise";
 
-const MAX_TARGETS = 8;
 const MIN_TARGETS = 3;
 const TEXT_TYPES: TextType[] = ["story", "dialogue", "email", "postcard", "voice_message"];
 
@@ -46,7 +46,7 @@ type VocabRow = {
   units: { sort_order: number } | { sort_order: number }[] | null;
 };
 type Topic = { id: string; code: string; label_de: string; forms: string[] };
-type Progress = { box: number; due_date: string; last_seen_at: string | null; ease: number };
+type Progress = { box: number; due_date: string; last_seen_at: string | null; ease: number; correct_count: number };
 
 export class GenerateError extends Error {
   constructor(message: string, public status = 400) {
@@ -96,13 +96,14 @@ function buildPrompt(opts: {
   allowedForms: GapForm[];
   unlocked: Topic[];
   locked: Topic[];
+  level: Level;
   feedback?: string;
 }) {
   const system = `You write short English gap-fill (cloze) texts for a German child aged 10–11 in the first year of English at a Bavarian Gymnasium (textbook level: Green Line 1 Bayern, CEFR A1).
 
 Absolute rules:
 - Use ONLY grammar from the "already learned" list plus the most basic structures. Never use grammar from the "not learned yet" list.
-- Vocabulary: use the target words, the child's known words, names, and only very common beginner words (numbers, colours, family, days, school things, food, animals, rooms, simple adjectives). No idioms, no rare words.
+- Vocabulary: the child is a beginner. Use the target words, the child's known words, the basic word list and first names. Follow the LEVEL rules exactly. No idioms, no rare words.
 - Short, clear sentences. Friendly, everyday situations a 10-year-old enjoys. Setting: Greenwich / London, UK. Invent your own characters with common British first names. Do not use characters or storylines from any textbook.
 - Every target word appears EXACTLY ONCE, and ONLY as a gap. Do not use target words anywhere else in the text.
 - Write a gap as {{n|answer|form}} where n is the target number, answer is the exact text the child must type, and form is one of the allowed forms. The answer must be grammatically correct in the sentence.
@@ -117,7 +118,10 @@ Call the tool submit_exercise with your result.`;
     .map(({ n, vocab }) => `${n}. ${vocab.en} = ${vocab.de}${vocab.word_type ? ` (${vocab.word_type})` : ""}`)
     .join("\n");
 
-  const user = `Text type: ${TEXT_TYPE_INSTRUCTIONS[opts.textType]}.
+  const user = `${LEVELS[opts.level].instructions}
+The LEVEL rules are more important than the length given for the text type.
+
+Text type: ${TEXT_TYPE_INSTRUCTIONS[opts.textType]}.
 Topic inspiration: the textbook unit "${opts.unitTitle}". Choose a situation that fits the target words naturally.
 
 Target words (each exactly once as a gap):
@@ -135,8 +139,11 @@ ${opts.unlocked.length ? opts.unlocked.map((t) => `- ${t.label_de}`).join("\n") 
 Grammar NOT learned yet – do not use it:
 ${opts.locked.length ? opts.locked.map((t) => `- ${t.label_de}`).join("\n") : "- (none)"}
 
-Words the child already knows (you may use these freely):
-${opts.known.join(", ") || "(none yet)"}${opts.feedback ? `\n\nYour previous attempt had these problems. Avoid them:\n${opts.feedback}` : ""}`;
+Words the child already knows from class (use freely):
+${opts.known.join(", ") || "(none yet)"}
+
+Basic word list (known from primary school, use freely; simple forms like -s plural are fine):
+${CORE_WORDS.join(", ")}${opts.feedback ? `\n\nYour previous attempt had these problems. Avoid them:\n${opts.feedback}` : ""}`;
 
   return { system, user };
 }
@@ -239,7 +246,7 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     supabase.from("units").select("id, title, sort_order, textbook_unit_id").eq("id", unitId).eq("child_id", childId).maybeSingle(),
     supabase
       .from("vocab")
-      .select("id, unit_id, en, de, word_type, accepted_en, vocab_progress(box, due_date, last_seen_at, ease), units!inner(sort_order)")
+      .select("id, unit_id, en, de, word_type, accepted_en, vocab_progress(box, due_date, last_seen_at, ease, correct_count), units!inner(sort_order)")
       .eq("child_id", childId),
     supabase.from("child_grammar_overrides").select("topic_id, enabled").eq("child_id", childId),
     supabase.from("exercises").select("text_type").eq("child_id", childId).order("created_at", { ascending: false }).limit(1),
@@ -251,19 +258,6 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const sortOf = (v: VocabRow) => one(v.units)?.sort_order ?? 0;
   const today = berlinToday();
 
-  // Zielwörter: nur aus der gewählten Unit (fällige und schwierige zuerst).
-  // Wiederholung älterer Units übernehmen die Karteikarten.
-  const picked = byPriority(words.filter((v) => v.unit_id === unitId), today).slice(0, MAX_TARGETS);
-  if (picked.length < MIN_TARGETS) {
-    throw new GenerateError(`Für einen Lückentext braucht diese Unit mindestens ${MIN_TARGETS} Vokabeln.`);
-  }
-  const targets: Target[] = shuffle(picked).map((v, i) => ({ n: i + 1, vocab: v }));
-
-  // Bekannter Wortschatz (nur Englisch), Grammatik, Textsorte
-  const known = words
-    .filter((v) => sortOf(v) <= unit.sort_order && !picked.includes(v))
-    .map((v) => v.en)
-    .slice(0, 400);
 
   // Freigeschaltet ist die Grammatik bis zur aktuellen Unit – oder bis zur geübten, falls die weiter ist
   // (wer Unit 1 übt, ist in Unit 1). Abweichungen der Lehrkraft (Overrides) gelten zusätzlich.
@@ -283,12 +277,39 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     new Set<GapForm>(["base", ...(unlockedTopics.flatMap((t) => t.forms) as GapForm[])]),
   );
 
+  // Schwierigkeitsstufe: Wörter, die das Kind schon mindestens einmal richtig hatte,
+  // dazu die letzten Lückentext-Ergebnisse. Gespeichert, aber nie geübt, zählt nicht.
+  const knownRows = words.filter((v) => sortOf(v) <= upTo);
+  const masteredCount = words.filter((v) => (one(v.vocab_progress)?.correct_count ?? 0) > 0).length;
+  const { data: recent } = await supabase
+    .from("attempts")
+    .select("score, max_score")
+    .eq("child_id", childId)
+    .not("finished_at", "is", null)
+    .order("finished_at", { ascending: false })
+    .limit(3);
+  const recentScores = ((recent ?? []) as { score: number | null; max_score: number | null }[])
+    .filter((r) => r.max_score)
+    .map((r) => (r.score ?? 0) / (r.max_score as number));
+  const level = chooseLevel(masteredCount, recentScores);
+  const cfg = LEVELS[level];
+
+  // Zielwörter: nur aus der gewählten Unit (fällige und schwierige zuerst).
+  // Wiederholung älterer Units übernehmen die Karteikarten.
+  const picked = byPriority(words.filter((v) => v.unit_id === unitId), today).slice(0, cfg.maxTargets);
+  if (picked.length < MIN_TARGETS) {
+    throw new GenerateError(`Für einen Lückentext braucht diese Unit mindestens ${MIN_TARGETS} Vokabeln.`);
+  }
+  const targets: Target[] = shuffle(picked).map((v, i) => ({ n: i + 1, vocab: v }));
+  const known = knownRows.filter((v) => !picked.includes(v)).map((v) => v.en).slice(0, 400);
+  const knownSet = knownWordSet(knownRows.map((v) => v.en));
+
   const lastType = (lastEx?.[0]?.text_type as TextType | undefined) ?? null;
   const textType = shuffle(TEXT_TYPES.filter((t) => t !== lastType))[0];
 
   const { client, model: MODEL } = ai;
   let feedback: string | undefined;
-  let best: (Parsed & { title: string; theme: string }) | null = null;
+  let best: (Parsed & { title: string; theme: string; unknownCount: number }) | null = null;
   const log: {
     attempt: number;
     text: string;
@@ -298,6 +319,8 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     blocks?: string[];
     input_keys?: string[];
     output_tokens?: number;
+    level?: number;
+    unknown?: string[];
   }[] = [];
   const started = Date.now();
 
@@ -312,6 +335,7 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
       allowedForms,
       unlocked: unlockedTopics,
       locked,
+      level,
       feedback,
     });
 
@@ -350,13 +374,27 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     const theme = typeof input?.theme === "string" ? input.theme : "";
 
     const parsed = parse(rawText.replace(/\r\n/g, "\n").trim(), targets, allowedForms);
-    log.push({ attempt, text: rawText.slice(0, 3000), problems: parsed.problems, fatal: parsed.fatal, ...meta });
-    const candidate = { ...parsed, title: title.trim() || "Lückentext", theme: theme.trim() };
+    const plain = parsed.segments.map((sg) => (sg.t === "text" ? sg.v : sg.answer)).join("");
+    const unknown = unknownWords(plain, knownSet);
+    if (unknown.length > cfg.maxUnknown) {
+      parsed.problems.push(
+        `these words are too difficult for this child – replace them with known or basic words (or leave the idea out): ${unknown.join(", ")}`,
+      );
+    }
+    log.push({ attempt, text: rawText.slice(0, 3000), problems: parsed.problems, fatal: parsed.fatal, level, unknown, ...meta });
+    const candidate = { ...parsed, title: title.trim() || "Lückentext", theme: theme.trim(), unknownCount: unknown.length };
     if (parsed.fatal.length === 0 && parsed.problems.length === 0) {
       best = candidate;
       break;
     }
-    if (parsed.fatal.length === 0 && (!best || parsed.gapCount > best.gapCount)) best = candidate;
+    // Beste Notlösung: keine schweren Fehler, möglichst viele Lücken, möglichst wenige unbekannte Wörter
+    if (
+      parsed.fatal.length === 0 &&
+      (!best ||
+        parsed.gapCount > best.gapCount ||
+        (parsed.gapCount === best.gapCount && unknown.length < best.unknownCount))
+    )
+      best = candidate;
     feedback =
       [...parsed.fatal, ...parsed.problems].map((p) => `- ${p}`).join("\n") +
       "\n- Remember: write every gap exactly as {{n|answer|form}} and use each target number exactly once.";
