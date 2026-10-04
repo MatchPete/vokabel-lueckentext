@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { recordCardReview } from "@/app/actions";
 import Confetti from "./Confetti";
 import { grade as gradeAnswer, type Result } from "@/lib/exercise";
-import { buildCramRound, buildRound, cardAnswer, gradeFor, isNew, nextDueDate, type CardWord } from "@/lib/cards";
+import { buildCramRound, buildRound, cardAnswer, gradeFor, isNew, nextDueDate, type CardWord, type Grade } from "@/lib/cards";
 
 type Props = { childId: string; childName: string; unitId: string; words: CardWord[]; today: string };
 type Item = { id: string; kind: "learn" | "ask" };
@@ -32,6 +32,8 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   const [repeats, setRepeats] = useState<Record<string, number>>({});
   const [finished, setFinished] = useState<Set<string>>(new Set());
   const [saveFailed, setSaveFailed] = useState(false);
+  // Falsche Antworten werden erst beim Weitergehen gespeichert, damit "Ich hatte es richtig" noch korrigieren kann
+  const [pending, setPending] = useState<{ vocabId: string; grade: Grade; given: string; ms: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const copyRef = useRef<HTMLInputElement>(null);
 
@@ -89,10 +91,10 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     // Nur die erste Abfrage eines Wortes in dieser Runde zählt für die Planung
     if (!(word.id in graded)) {
       setGraded((g) => ({ ...g, [word.id]: r }));
-      const g = gradeFor(r, Date.now() - shownAt, sol.answer.length, isNew(word));
-      recordCardReview({ vocabId: word.id, grade: g, given, ms: Date.now() - shownAt })
-        .then((res) => !res.ok && setSaveFailed(true))
-        .catch(() => setSaveFailed(true));
+      const ms = Date.now() - shownAt;
+      const g = gradeFor(r, ms, Math.min(...[sol.answer, ...sol.accepted].map((a) => a.length)), isNew(word));
+      if (r === "correct") save({ vocabId: word.id, grade: g, given, ms });
+      else setPending({ vocabId: word.id, grade: g, given, ms });
     }
     if (r === "correct") {
       setFinished((f) => new Set(f).add(word.id));
@@ -100,8 +102,30 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     }
   }
 
+  function save(entry: { vocabId: string; grade: Grade; given: string; ms: number }) {
+    recordCardReview(entry)
+      .then((res) => !res.ok && setSaveFailed(true))
+      .catch(() => setSaveFailed(true));
+  }
+
+  /** Das Kind meldet: Meine Antwort war richtig. Zählt als gewusst, Wort ist für diese Runde erledigt. */
+  function overrideCorrect() {
+    if (!current) return;
+    if (pending && pending.vocabId === current.id) {
+      save({ ...pending, grade: "good" });
+      setPending(null);
+      setGraded((g) => ({ ...g, [current.id]: "correct" }));
+    }
+    setFinished((f) => new Set(f).add(current.id));
+    advance(queue.slice(1));
+  }
+
   function continueAfter(r: Result) {
     if (!current) return;
+    if (pending && pending.vocabId === current.id) {
+      save(pending);
+      setPending(null);
+    }
     const rest = queue.slice(1);
     if (r === "correct") return advance(rest);
     const n = (repeats[current.id] ?? 0) + 1;
@@ -275,6 +299,11 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
                 />
               </label>
               <button className="btn" disabled={gradeAnswer(copy, sol) !== "correct"}>Weiter</button>
+              {value.trim() && (
+                <button type="button" className="link fc-override" onClick={overrideCorrect}>
+                  Meine Antwort „{value.trim()}“ war richtig
+                </button>
+              )}
             </form>
           )}
         </section>

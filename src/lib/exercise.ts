@@ -71,22 +71,39 @@ export function grade(given: string, gap: Pick<GapSegment, "answer" | "accepted"
 }
 
 /**
- * Mögliche Lückenformen einer gespeicherten Vokabel:
- * "to look at sth." -> ["look at"], "Mum / Mom" -> ["Mum", "Mom"], "to help (sb.)" -> ["help"].
- * Platzhalter sb./sth./so. stehen in Lehrwerken für "jemand/etwas" und gehören nicht in die Lücke.
+ * Alle Schreibweisen, die für eine Vokabel als richtig gelten. Lehrwerke ergänzen Wörter oft um Hinweise:
+ *   "TV (= television)"   -> "TV", "television"
+ *   "to look at sth."     -> "look at"
+ *   "to help (sb.)"       -> "help"
+ *   "(to) put"            -> "put", "to put"
+ *   "colour (AE color)"   -> "colour", "color"
+ *   "Mum / Mom", "a; b"   -> jede Alternative einzeln
+ *   "I'm from …"          -> "I'm from"
+ * "to" am Anfang entfällt hier; Karteikarten akzeptieren es zusätzlich.
  */
 export function baseForms(en: string): string[] {
-  return en
-    .split(/\s*\/\s*/)
-    .map((alt) =>
-      alt
-        .replace(/\(\s*(sb|sth|so)\.?\s*\)/gi, " ")
-        .replace(/(^|\s)(sb|sth|so)\.?(?=\s|$|[,;])/gi, " ")
-        .replace(/^\s*to\s+/i, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter(Boolean);
+  // "(= …)" und "(AE …)/(BE …)" sind gleichwertige Alternativen
+  const synRe = /\(\s*(?:=|AE\b|BE\b)\s*([^)]+)\)/gi;
+  const synonyms = [...en.matchAll(synRe)].map((m) => m[1]);
+  const core = en.replace(synRe, " ");
+  const alternatives = [...core.split(/\s*[/;]\s*/), ...synonyms];
+
+  const clean = (s: string) =>
+    s
+      .replace(/(\.\.\.|…)/g, " ")
+      .replace(/\(\s*(sb|sth|so)\.?\s*\)/gi, " ")
+      .replace(/(^|\s)(sb|sth|so)\.?(?=\s|$|[,;])/gi, " ")
+      .replace(/^\s*to\s+/i, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const out: string[] = [];
+  for (const alt of alternatives) {
+    const withoutBrackets = clean(alt.replace(/\([^)]*\)/g, " "));
+    const bracketsOpened = clean(alt.replace(/[()]/g, " "));
+    for (const f of [withoutBrackets, bracketsOpened]) if (f && !out.includes(f)) out.push(f);
+  }
+  return out;
 }
 
 export function gapsOf(segments: Segment[]): GapSegment[] {

@@ -27,7 +27,7 @@ export function cardAnswer(w: Pick<CardWord, "en" | "accepted_en">) {
   const forms = [...baseForms(w.en), ...w.accepted_en.flatMap(baseForms)];
   const answer = w.en.trim();
   // "to look at" gilt ebenfalls, wenn das Buch das Verb mit "to" angibt
-  const withTo = /^\s*to\s/i.test(w.en) ? forms.map((f) => `to ${f}`) : [];
+  const withTo = /^\s*\(?to\)?\s/i.test(w.en) ? forms.map((f) => `to ${f}`) : [];
   const accepted = Array.from(new Set([w.en, ...forms, ...withTo, ...w.accepted_en])).filter(
     (a) => normalize(a) !== normalize(answer),
   );
