@@ -107,7 +107,8 @@ Absolute rules:
 - Every target word appears EXACTLY ONCE, and ONLY as a gap. Do not use target words anywhere else in the text.
 - Write a gap as {{n|answer|form}} where n is the target number, answer is the exact text the child must type, and form is one of the allowed forms. The answer must be grammatically correct in the sentence.
 - "sb." means somebody and "sth." means something. They are placeholders: replace them with a fitting word in the text, OUTSIDE the gap. Example: "to look at sth." -> "Look at {{3|look at|base}}" is WRONG; correct is "{{3|Look at|base}} the picture!".
-- NO hint is shown below the gaps. Each gap must be solvable from the context alone: the surrounding words must point clearly to exactly one of the target words, and no other target word may fit that gap. Give helpful context (e.g. "It's raining, so I take my ___." for umbrella). If a non-base form is used (e.g. past), the sentence must make the form obvious (e.g. "Yesterday …").
+- NO hint is shown below the gaps. Each gap must be solvable from the context alone: the surrounding words must point clearly to exactly one of the target words, and no other target word may fit that gap. Give helpful context, e.g. "It's raining, so I take my {{4|umbrella|base}}." If a non-base form is used (e.g. past), the sentence must make the form obvious (e.g. "Yesterday …").
+- Write EVERY gap in the {{n|answer|form}} format. Never use underscores, dots or brackets as gaps.
 - English only. No German words in the text.
 
 Call the tool submit_exercise with your result.`;
@@ -219,6 +220,7 @@ function parse(text: string, targets: Target[], allowedForms: GapForm[]): Parsed
   for (const t of targets) if (!seen.has(t.n)) problems.push(`target ${t.n} (${t.vocab.en}) is missing`);
   if (/\{\{|\}\}/.test(text.replace(re, ""))) fatal.push("broken gap markers");
   if (/[äöüßÄÖÜ]/.test(text)) fatal.push("German words in the text");
+  if (/_{2,}/.test(text.replace(re, ""))) fatal.push("underscores were used as gaps; write every gap as {{n|answer|form}}");
   if (text.length < 150 || text.length > 1600) fatal.push("text length out of range");
 
   return { segments, problems, fatal, gapCount: seen.size };
@@ -233,15 +235,15 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     throw e;
   }
 
-  const [{ data: unit }, { data: vocab }, { data: unlocked }, { data: lastEx }, { data: child }] = await Promise.all([
+  const [{ data: unit }, { data: vocab }, { data: overrides }, { data: lastEx }, { data: child }] = await Promise.all([
     supabase.from("units").select("id, title, sort_order, textbook_unit_id").eq("id", unitId).eq("child_id", childId).maybeSingle(),
     supabase
       .from("vocab")
       .select("id, unit_id, en, de, word_type, accepted_en, vocab_progress(box, due_date, last_seen_at, ease), units!inner(sort_order)")
       .eq("child_id", childId),
-    supabase.rpc("unlocked_grammar", { p_child_id: childId }),
+    supabase.from("child_grammar_overrides").select("topic_id, enabled").eq("child_id", childId),
     supabase.from("exercises").select("text_type").eq("child_id", childId).order("created_at", { ascending: false }).limit(1),
-    supabase.from("children").select("textbook_id").eq("id", childId).maybeSingle(),
+    supabase.from("children").select("textbook_id, current:units!children_current_unit_fk(sort_order)").eq("id", childId).maybeSingle(),
   ]);
   if (!unit || !child) throw new GenerateError("Unit nicht gefunden.", 404);
 
@@ -263,15 +265,20 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     .map((v) => v.en)
     .slice(0, 400);
 
-  const unlockedTopics = (unlocked ?? []) as Topic[];
+  // Freigeschaltet ist die Grammatik bis zur aktuellen Unit – oder bis zur geübten, falls die weiter ist
+  // (wer Unit 1 übt, ist in Unit 1). Abweichungen der Lehrkraft (Overrides) gelten zusätzlich.
+  const currentSort = one((child as unknown as { current: { sort_order: number } | { sort_order: number }[] | null }).current)?.sort_order ?? 0;
+  const upTo = Math.max(currentSort, unit.sort_order);
   const { data: allTopics } = await supabase
     .from("grammar_topics")
-    .select("id, code, label_de, forms, textbook_units!inner(textbook_id)")
+    .select("id, code, label_de, forms, textbook_units!inner(textbook_id, sort_order)")
     .eq("textbook_units.textbook_id", child.textbook_id);
-  const unlockedIds = new Set(unlockedTopics.map((t) => t.id));
-  const locked = ((allTopics ?? []) as unknown as Topic[]).filter(
-    (t) => !unlockedIds.has(t.id) && !BASELINE_CODES.has(t.code),
-  );
+  const ov = new Map(((overrides ?? []) as { topic_id: string; enabled: boolean }[]).map((o) => [o.topic_id, o.enabled]));
+  type TopicRow = Topic & { textbook_units: { sort_order: number } | { sort_order: number }[] | null };
+  const topics = (allTopics ?? []) as unknown as TopicRow[];
+  const isUnlocked = (t: TopicRow) => ov.get(t.id) ?? (one(t.textbook_units)?.sort_order ?? 999) <= upTo;
+  const unlockedTopics: Topic[] = topics.filter(isUnlocked);
+  const locked: Topic[] = topics.filter((t) => !isUnlocked(t) && !BASELINE_CODES.has(t.code));
   const allowedForms = Array.from(
     new Set<GapForm>(["base", ...(unlockedTopics.flatMap((t) => t.forms) as GapForm[])]),
   );
@@ -282,8 +289,12 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const { client, model: MODEL } = ai;
   let feedback: string | undefined;
   let best: (Parsed & { title: string; theme: string }) | null = null;
+  const log: { attempt: number; text: string; problems: string[]; fatal: string[] }[] = [];
+  const started = Date.now();
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // Bis zu 3 Versuche, ein dritter nur, wenn noch genug Zeit bis zum Funktions-Limit bleibt
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt === 3 && Date.now() - started > 30_000) break;
     const { system, user } = buildPrompt({
       targets,
       known,
@@ -310,21 +321,30 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
       | null;
     if (!input?.text) {
       feedback = "- You did not return any text.";
+      log.push({ attempt, text: "", problems: ["no text returned"], fatal: [] });
       continue;
     }
 
     const parsed = parse(input.text.replace(/\r\n/g, "\n").trim(), targets, allowedForms);
+    log.push({ attempt, text: input.text.slice(0, 3000), problems: parsed.problems, fatal: parsed.fatal });
     const candidate = { ...parsed, title: (input.title ?? "").trim() || "Lückentext", theme: (input.theme ?? "").trim() };
     if (parsed.fatal.length === 0 && parsed.problems.length === 0) {
       best = candidate;
       break;
     }
     if (parsed.fatal.length === 0 && (!best || parsed.gapCount > best.gapCount)) best = candidate;
-    feedback = [...parsed.fatal, ...parsed.problems].map((p) => `- ${p}`).join("\n");
+    feedback =
+      [...parsed.fatal, ...parsed.problems].map((p) => `- ${p}`).join("\n") +
+      "\n- Remember: write every gap exactly as {{n|answer|form}} and use each target number exactly once.";
   }
 
   // Notlösung: fehlerhafte Lücken wurden zu Text; reicht es trotzdem für eine Übung?
   if (!best || best.gapCount < MIN_TARGETS) {
+    // Für die Fehlersuche festhalten, was schiefging (Rohtext und Prüfergebnis)
+    await supabase
+      .from("generation_failures")
+      .insert({ child_id: childId, unit_id: unitId, model: MODEL, attempts: log })
+      .then(() => undefined, () => undefined);
     throw new GenerateError("Die Geschichte ist diesmal nicht gelungen. Bitte noch einmal versuchen.", 502);
   }
 
