@@ -23,6 +23,6 @@ Lückewort-Altdaten liegen archiviert im Schema `lueckewort`.
 - [x] Schema, RLS, Leitner-Logik, Green-Line-1-Seed
 - [x] Login per E-Mail und Passwort, Profile, Units, aktuelle Unit
 - [x] Vokabeln manuell eingeben
-- [ ] Lückentext-Generierung und Üben
-- [ ] Foto-Import
+- [x] Lückentext-Generierung und Üben
+- [x] Foto-Import
 - [ ] Elternansicht, PIN, Keep-alive

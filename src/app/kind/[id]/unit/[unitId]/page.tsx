@@ -3,10 +3,13 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { deleteVocab } from "@/app/actions";
 import VocabForm from "@/components/VocabForm";
+import StartExercise from "@/components/StartExercise";
 import { SECTION_LABELS, SECTION_ORDER, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
 
 export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId]">) {
   const { id, unitId } = await props.params;
+  const sp = await props.searchParams;
+  const imported = typeof sp.importiert === "string" && /^\d+$/.test(sp.importiert) ? Number(sp.importiert) : null;
   const supabase = await createClient();
 
   const [{ data: child }, { data: unit }, { data: vocab }] = await Promise.all([
@@ -41,6 +44,17 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
         <span className="tag tag-lg">{unitTag(u.textbook_units?.code)}</span>
         {u.title.replace(/^[^:]+:\s*/, "")}
       </h1>
+
+      {imported != null && (
+        <p className="card ok" role="status">
+          {imported === 1 ? "1 Vokabel" : `${imported} Vokabeln`} aus den Fotos gespeichert.
+        </p>
+      )}
+
+      <div className="unit-actions">
+        {words.length > 0 && <StartExercise childId={id} unitId={unitId} label="Diese Unit üben" />}
+        <Link href={`/kind/${id}/unit/${unitId}/foto`} className="btn-quiet">Seiten fotografieren</Link>
+      </div>
 
       <VocabForm childId={id} unitId={unitId} sections={sections} />
 

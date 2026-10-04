@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { setCurrentUnit } from "@/app/actions";
+import StartExercise from "@/components/StartExercise";
 import { unitTag, type Child, type Unit } from "@/lib/types";
 
 export default async function ChildPage(props: PageProps<"/kind/[id]">) {
@@ -42,9 +43,12 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
             <span className="tag">{unitTag(current.textbook_units?.code)}</span>
             {current.title.replace(/^[^:]+:\s*/, "")}
           </p>
-          <Link href={`/kind/${kid.id}/unit/${current.id}`} className="btn">
-            Vokabeln eintragen
-          </Link>
+          <div className="current-actions">
+            <StartExercise childId={kid.id} unitId={current.id} label="Üben" />
+            <Link href={`/kind/${kid.id}/unit/${current.id}`} className="btn-quiet">
+              Vokabeln eintragen
+            </Link>
+          </div>
 
           <details className="change">
             <summary>Andere Unit ist dran</summary>

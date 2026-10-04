@@ -175,7 +175,11 @@ body {
 /* "Gerade dran" */
 .current { display: flex; flex-direction: column; gap: 0.75rem; }
 .current-title { margin: 0; display: flex; align-items: center; gap: 0.6rem; font-size: 1.375rem; font-weight: 700; color: var(--ink); line-height: 1.3; }
-.current .btn { align-self: flex-start; }
+.current-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
+.current-actions .start { flex: 0 1 auto; }
+.btn-quiet { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.start { display: flex; flex-direction: column; gap: 0.25rem; align-items: flex-start; }
+.start .form-status:empty { display: none; }
 
 /* Abschnittsliste: jede Zeile = zwei Heftzeilen */
 .units { list-style: none; margin: 0; padding: 0; }
@@ -225,6 +229,114 @@ body {
   cursor: pointer;
 }
 .icon-btn:hover { color: var(--red); }
+
+/* Arbeitsblatt (Lückentext) */
+.worksheet {
+  background: var(--card);
+  border: 1px solid #dde4ee;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem 1.5rem;
+  font-size: 1.25rem;
+  line-height: 3.4rem;
+  color: #1f2733;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+.gap {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: top;
+  line-height: 1.2;
+  margin: 0.35rem 0.15rem 0;
+  white-space: normal;
+}
+.gap input {
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  text-align: center;
+  background: rgba(29, 60, 143, 0.04);
+  border: 0;
+  border-bottom: 2.5px solid var(--ink);
+  border-radius: 0.3rem 0.3rem 0 0;
+  padding: 0.3rem 0.25rem 0.15rem;
+  max-width: 100%;
+}
+.gap input:focus { outline: none; background: rgba(29, 60, 143, 0.1); }
+.gap input[readonly] { background: transparent; }
+.gap-hint { font-size: 0.8rem; color: var(--pencil); padding-top: 0.15rem; max-width: 14rem; text-align: center; }
+.gap-correct input { color: var(--green); border-bottom-color: var(--green); }
+.gap-almost input,
+.gap-wrong input { color: var(--red); border-bottom-color: var(--red); text-decoration: line-through; text-decoration-thickness: 2px; }
+.gap-solution { color: var(--ink); font-size: 1rem; }
+.gap-retry input { border-bottom-color: var(--red); background: rgba(200, 40, 58, 0.06); }
+.gap-retry .gap-hint { color: var(--red); }
+
+.check-bar { display: flex; flex-direction: column; gap: 0.75rem; align-items: stretch; position: sticky; bottom: 0; padding: 0.75rem 0 calc(0.75rem + env(safe-area-inset-bottom)); background: linear-gradient(to top, var(--paper) 70%, transparent); }
+.check-note { margin: 0; font-size: 1rem; }
+
+.result { display: flex; flex-direction: column; gap: 0.5rem; }
+.result-score { margin: 0; font-size: 2.5rem; font-weight: 700; color: var(--ink); line-height: 1.1; }
+.result-actions { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-top: 0.5rem; }
+
+/* Unit-Seite */
+.unit-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Foto-Import: Kamera */
+.camera {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  background: #1b2230;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.camera video { width: 100%; height: 100%; object-fit: cover; }
+.camera video.is-hidden { display: none; }
+.camera-frame { position: absolute; inset: 6%; border: 2px dashed rgba(255, 255, 255, 0.7); border-radius: 0.5rem; pointer-events: none; }
+.camera-placeholder { color: #e8edf4; text-align: center; padding: 1.5rem; margin: 0; }
+.camera-actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.shutter { width: 4.5rem; height: 4.5rem; border-radius: 50%; border: 4px solid var(--ink); background: #fff; padding: 0.3rem; cursor: pointer; }
+.shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--ink); }
+.shutter:active span { transform: scale(0.92); }
+.file-btn { position: relative; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.thumbs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr)); gap: 0.75rem; }
+.thumbs li { position: relative; }
+.thumbs img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 0.4rem; border: 1px solid #dde4ee; display: block; }
+.thumb-del { position: absolute; top: -0.5rem; right: -0.5rem; width: 2rem; height: 2rem; border-radius: 50%; border: 0; background: var(--pencil); color: #fff; font-size: 1.1rem; cursor: pointer; }
+.progress { width: 100%; height: 0.75rem; accent-color: var(--ink); }
+
+/* Foto-Import: Prüfliste */
+.review { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.review-row { display: flex; gap: 0.75rem; align-items: flex-start; background: var(--card); border: 1px solid #dde4ee; border-radius: 0.6rem; padding: 0.6rem 0.75rem; }
+.review-row.is-off { opacity: 0.55; }
+.review-row.is-uncertain { border-color: #e2a33a; box-shadow: inset 4px 0 0 #e2a33a; }
+.review-check { padding-top: 0.6rem; }
+.review-check input { width: 1.4rem; height: 1.4rem; accent-color: var(--ink); }
+.review-fields { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 0.25rem 0.75rem; min-width: 0; }
+.review-fields input, .review-meta select {
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-bottom: 1.5px solid var(--rule);
+  padding: 0.35rem 0;
+  min-width: 0;
+  min-height: 2.5rem;
+}
+.review-fields input[lang="en"] { font-weight: 700; }
+.review-fields input:focus { outline: none; border-bottom-color: var(--ink); }
+.review-meta { grid-column: 1 / -1; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.badge { font-size: 0.8rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 1rem; background: #e8edf4; color: var(--pencil); }
+.badge-warn { background: #fbecd2; color: #8a5a0a; }
+@media (max-width: 26rem) { .review-fields { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
