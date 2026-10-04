@@ -37,6 +37,12 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   // Falsche Antworten werden erst beim Weitergehen gespeichert, damit "Ich hatte es richtig" noch korrigieren kann
   const [pending, setPending] = useState<{ vocabId: string; grade: Grade; given: string; ms: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const nextRef = useRef<HTMLButtonElement>(null);
+  // Nach einer richtigen Antwort bleibt die Karte kurz stehen; "Weiter" überspringt die Wartezeit
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
   const copyRef = useRef<HTMLInputElement>(null);
 
   const current = queue[0];
@@ -54,7 +60,8 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   useEffect(() => {
     if (phase !== "card") return;
     if (result === null) inputRef.current?.focus();
-    else if (result !== "correct") copyRef.current?.focus();
+    else if (result === "correct") nextRef.current?.focus();
+    else copyRef.current?.focus();
   }, [phase, current, result]);
 
   function start(list: CardWord[]) {
@@ -112,8 +119,11 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     }
     if (r === "correct") {
       setFinished((f) => new Set(f).add(word.id));
-      // Mit Vorlesen etwas länger stehen lassen, damit die Aussprache nicht abgeschnitten wird
-      setTimeout(() => continueAfter("correct"), autoSpeak ? 1500 : 700);
+      // 2,5 Sekunden sichtbar lassen, damit sich die richtige Schreibweise einprägt
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        continueAfter("correct");
+      }, 2500);
     }
   }
 
@@ -133,6 +143,14 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
     }
     setFinished((f) => new Set(f).add(current.id));
     advance(queue.slice(1));
+  }
+
+  function skipWait() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+      continueAfter("correct");
+    }
   }
 
   function continueAfter(r: Result) {
@@ -290,9 +308,15 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
           </form>
 
           {result === "correct" && (
-            <div className="fc-row">
+            <div className="fc-correct">
               <p className="ok fc-feedback">Richtig!</p>
-              <SpeakButton text={word.en} />
+              <div className="fc-row">
+                <p className="fc-solution fc-solution-ok" lang="en">{word.en}</p>
+                <SpeakButton text={word.en} />
+              </div>
+              <button ref={nextRef} type="button" className="btn" onClick={skipWait}>
+                Weiter
+              </button>
             </div>
           )}
 

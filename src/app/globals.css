@@ -382,6 +382,8 @@ body {
 .fc-solution { margin: 0; font-size: 1.75rem; font-weight: 700; color: var(--ink); }
 .card-missed { min-height: var(--line); }
 .fc-row { display: flex; align-items: center; gap: 0.75rem; }
+.fc-correct { display: flex; flex-direction: column; gap: 0.75rem; }
+.fc-solution-ok { color: var(--green); }
 .speak-btn {
   flex-shrink: 0; width: 2.75rem; height: 2.75rem; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;

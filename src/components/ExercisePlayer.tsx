@@ -94,7 +94,7 @@ export default function ExercisePlayer({ exerciseId, childId, childName, unitId,
     <>
       <div className="worksheet" lang="en">
         {segments.map((s, k) => {
-          if (s.t === "text") return <span key={k}>{s.v}</span>;
+          if (s.t === "text") return <span key={k}>{s.v.replace(/\\n/g, "\n")}</span>;
           const i = gapIndex[k];
           const st = status(i);
           const hintAlmost = phase === "second" && first?.[i] === "almost";

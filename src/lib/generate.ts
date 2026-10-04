@@ -156,7 +156,7 @@ const TOOL: Anthropic.Tool = {
     properties: {
       title: { type: "string", description: "Short English title, at most 6 words." },
       theme: { type: "string", description: "Topic of the text in German, 2–4 words." },
-      text: { type: "string", description: "The full text with gaps written as {{n|answer|form}}. Use \\n for line breaks." },
+      text: { type: "string", description: "The full text with gaps written as {{n|answer|form}}. Put each line of a dialogue, greeting or closing on a new line (a real line break)." },
     },
     required: ["title", "theme", "text"],
   },
@@ -373,7 +373,9 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     const title = typeof input?.title === "string" ? input.title : "";
     const theme = typeof input?.theme === "string" ? input.theme : "";
 
-    const parsed = parse(rawText.replace(/\r\n/g, "\n").trim(), targets, allowedForms);
+    // Manche Antworten enthalten "\n" als Zeichenfolge statt als echten Zeilenumbruch
+    const cleanText = rawText.replace(/\r\n/g, "\n").replace(/\\n/g, "\n").trim();
+    const parsed = parse(cleanText, targets, allowedForms);
     const plain = parsed.segments.map((sg) => (sg.t === "text" ? sg.v : sg.answer)).join("");
     const unknown = unknownWords(plain, knownSet);
     if (unknown.length > cfg.maxUnknown) {
