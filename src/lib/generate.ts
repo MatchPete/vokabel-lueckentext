@@ -289,7 +289,16 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const { client, model: MODEL } = ai;
   let feedback: string | undefined;
   let best: (Parsed & { title: string; theme: string }) | null = null;
-  const log: { attempt: number; text: string; problems: string[]; fatal: string[] }[] = [];
+  const log: {
+    attempt: number;
+    text: string;
+    problems: string[];
+    fatal: string[];
+    stop_reason?: string | null;
+    blocks?: string[];
+    input_keys?: string[];
+    output_tokens?: number;
+  }[] = [];
   const started = Date.now();
 
   // Bis zu 3 Versuche, ein dritter nur, wenn noch genug Zeit bis zum Funktions-Limit bleibt
@@ -308,7 +317,7 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
 
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 2000,
+      max_tokens: 6000,
       system,
       tools: [TOOL],
       tool_choice: { type: "tool", name: TOOL.name },
@@ -316,18 +325,33 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     });
 
     const block = res.content.find((b) => b.type === "tool_use");
-    const input = (block && block.type === "tool_use" ? block.input : null) as
-      | { title?: string; theme?: string; text?: string }
-      | null;
-    if (!input?.text) {
-      feedback = "- You did not return any text.";
-      log.push({ attempt, text: "", problems: ["no text returned"], fatal: [] });
+    const input = (block && block.type === "tool_use" ? block.input : null) as Record<string, unknown> | null;
+    // Text bevorzugt aus dem Feld "text"; sonst aus einem anderen Feld oder Textblock, der Lücken enthält
+    const candidates = [
+      input?.text,
+      ...Object.values(input ?? {}),
+      ...res.content.map((b) => (b.type === "text" ? b.text : null)),
+    ].filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+    const rawText = candidates.find((x) => x === input?.text) ?? candidates.find((x) => x.includes("{{"));
+    const meta = {
+      stop_reason: res.stop_reason,
+      blocks: res.content.map((b) => b.type),
+      input_keys: Object.keys(input ?? {}),
+      output_tokens: res.usage?.output_tokens,
+    };
+    if (!rawText) {
+      feedback = res.stop_reason === "max_tokens"
+        ? "- Your answer was cut off. Keep the text short and call the tool directly."
+        : "- You did not return any text in the field \"text\".";
+      log.push({ attempt, text: "", problems: ["no text returned"], fatal: [], ...meta });
       continue;
     }
+    const title = typeof input?.title === "string" ? input.title : "";
+    const theme = typeof input?.theme === "string" ? input.theme : "";
 
-    const parsed = parse(input.text.replace(/\r\n/g, "\n").trim(), targets, allowedForms);
-    log.push({ attempt, text: input.text.slice(0, 3000), problems: parsed.problems, fatal: parsed.fatal });
-    const candidate = { ...parsed, title: (input.title ?? "").trim() || "Lückentext", theme: (input.theme ?? "").trim() };
+    const parsed = parse(rawText.replace(/\r\n/g, "\n").trim(), targets, allowedForms);
+    log.push({ attempt, text: rawText.slice(0, 3000), problems: parsed.problems, fatal: parsed.fatal, ...meta });
+    const candidate = { ...parsed, title: title.trim() || "Lückentext", theme: theme.trim() };
     if (parsed.fatal.length === 0 && parsed.problems.length === 0) {
       best = candidate;
       break;
