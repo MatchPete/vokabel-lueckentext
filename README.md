@@ -11,7 +11,7 @@ Stack: Next.js 16 · Supabase (Projekt `vokabelbaer`) · Vercel
 2. In Supabase unter Authentication:
    - Neue Registrierungen deaktivieren (nur bestehende Konten dürfen sich anmelden).
    - Passwort für das bestehende Konto setzen (siehe Chat-Anleitung).
-3. `npm install` und `npm run dev`.
+3. In Vercel `AI_GATEWAY_API_KEY` setzen (Vercel → AI Gateway → API Keys).
 
 ## Datenbank
 

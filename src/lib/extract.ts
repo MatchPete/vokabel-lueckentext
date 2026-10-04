@@ -1,8 +1,8 @@
 // Liest Vokabeln aus einem Foto einer Buchseite (Claude Vision). Läuft nur auf dem Server.
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { aiClient, AiConfigError } from "./ai";
 import { SECTION_ORDER, type Section } from "./types";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
 const WORD_TYPES = ["noun", "verb", "adjective", "adverb", "phrase", "other"] as const;
 
 export type ExtractedEntry = {
@@ -63,11 +63,16 @@ export class ExtractError extends Error {
 }
 
 export async function extractVocabulary(image: Uint8Array, mediaType: "image/jpeg" | "image/png" | "image/webp") {
-  if (!process.env.ANTHROPIC_API_KEY) throw new ExtractError("Der API-Schlüssel fehlt in Vercel (ANTHROPIC_API_KEY).", 500);
+  let ai: ReturnType<typeof aiClient>;
+  try {
+    ai = aiClient();
+  } catch (e) {
+    if (e instanceof AiConfigError) throw new ExtractError(e.message, 500);
+    throw e;
+  }
 
-  const client = new Anthropic();
-  const res = await client.messages.create({
-    model: MODEL,
+  const res = await ai.client.messages.create({
+    model: ai.model,
     max_tokens: 8000,
     tools: [TOOL],
     tool_choice: { type: "tool", name: TOOL.name },

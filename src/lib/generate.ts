@@ -1,9 +1,9 @@
 // Erzeugt einen Lückentext mit Claude. Läuft nur auf dem Server.
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { aiClient, AiConfigError } from "./ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { baseForms, FORM_HINTS, normalize, type GapForm, type Segment, type TextType } from "./exercise";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
 const MAX_TARGETS = 8;
 const MAX_FROM_UNIT = 6;
 const MIN_TARGETS = 3;
@@ -220,7 +220,13 @@ function parse(text: string, targets: Target[], allowedForms: GapForm[]): Parsed
 }
 
 export async function generateExercise(supabase: SupabaseClient, childId: string, unitId: string) {
-  if (!process.env.ANTHROPIC_API_KEY) throw new GenerateError("Der API-Schlüssel fehlt in Vercel (ANTHROPIC_API_KEY).", 500);
+  let ai: ReturnType<typeof aiClient>;
+  try {
+    ai = aiClient();
+  } catch (e) {
+    if (e instanceof AiConfigError) throw new GenerateError(e.message, 500);
+    throw e;
+  }
 
   const [{ data: unit }, { data: vocab }, { data: unlocked }, { data: lastEx }, { data: child }] = await Promise.all([
     supabase.from("units").select("id, title, sort_order, textbook_unit_id").eq("id", unitId).eq("child_id", childId).maybeSingle(),
@@ -275,7 +281,7 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const lastType = (lastEx?.[0]?.text_type as TextType | undefined) ?? null;
   const textType = shuffle(TEXT_TYPES.filter((t) => t !== lastType))[0];
 
-  const client = new Anthropic();
+  const { client, model: MODEL } = ai;
   let feedback: string | undefined;
   let best: (Parsed & { title: string; theme: string }) | null = null;
 
