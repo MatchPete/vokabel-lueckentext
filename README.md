@@ -25,4 +25,7 @@ Lückewort-Altdaten liegen archiviert im Schema `lueckewort`.
 - [x] Vokabeln manuell eingeben
 - [x] Lückentext-Generierung und Üben
 - [x] Foto-Import
+- [x] Karteikarten mit anpassungsfähiger Wiederholung pro Wort
+- [x] Vokabeln nachträglich verschieben / mehrere löschen
+- [x] Medaillen, Übungsserie, Statistik, Konfetti
 - [ ] Elternansicht, PIN, Keep-alive

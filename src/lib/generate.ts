@@ -5,7 +5,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { baseForms, FORM_HINTS, normalize, type GapForm, type Segment, type TextType } from "./exercise";
 
 const MAX_TARGETS = 8;
-const MAX_FROM_UNIT = 6;
 const MIN_TARGETS = 3;
 const TEXT_TYPES: TextType[] = ["story", "dialogue", "email", "postcard", "voice_message"];
 
@@ -43,10 +42,11 @@ type VocabRow = {
   de: string;
   word_type: string | null;
   accepted_en: string[];
-  vocab_progress: { box: number; due_date: string; last_seen_at: string | null } | { box: number; due_date: string; last_seen_at: string | null }[] | null;
+  vocab_progress: Progress | Progress[] | null;
   units: { sort_order: number } | { sort_order: number }[] | null;
 };
 type Topic = { id: string; code: string; label_de: string; forms: string[] };
+type Progress = { box: number; due_date: string; last_seen_at: string | null; ease: number };
 
 export class GenerateError extends Error {
   constructor(message: string, public status = 400) {
@@ -69,15 +69,20 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-/** Fällige zuerst, dann niedrige Fächer, dann am längsten nicht gesehen. Gleichstand zufällig. */
+/** Fällige zuerst, dann niedrige Stufe, dann schwierige Wörter, dann am längsten nicht gesehen. Gleichstand zufällig. */
 function byPriority(words: VocabRow[], today: string): VocabRow[] {
   const key = (v: VocabRow) => {
     const p = one(v.vocab_progress);
-    return { due: p && p.due_date <= today ? 0 : 1, box: p?.box ?? 1, seen: p?.last_seen_at ?? "" };
+    return {
+      due: p && p.due_date <= today ? 0 : 1,
+      box: p?.box ?? 1,
+      ease: Number(p?.ease ?? 2.5),
+      seen: p?.last_seen_at ?? "",
+    };
   };
   return shuffle(words).sort((a, b) => {
     const ka = key(a), kb = key(b);
-    return ka.due - kb.due || ka.box - kb.box || ka.seen.localeCompare(kb.seen);
+    return ka.due - kb.due || ka.box - kb.box || ka.ease - kb.ease || ka.seen.localeCompare(kb.seen);
   });
 }
 
@@ -102,7 +107,7 @@ Absolute rules:
 - Every target word appears EXACTLY ONCE, and ONLY as a gap. Do not use target words anywhere else in the text.
 - Write a gap as {{n|answer|form}} where n is the target number, answer is the exact text the child must type, and form is one of the allowed forms. The answer must be grammatically correct in the sentence.
 - "sb." means somebody and "sth." means something. They are placeholders: replace them with a fitting word in the text, OUTSIDE the gap. Example: "to look at sth." -> "Look at {{3|look at|base}}" is WRONG; correct is "{{3|Look at|base}} the picture!".
-- Each gap must be clearly solvable from the context plus the German meaning that will be shown below the gap.
+- NO hint is shown below the gaps. Each gap must be solvable from the context alone: the surrounding words must point clearly to exactly one of the target words, and no other target word may fit that gap. Give helpful context (e.g. "It's raining, so I take my ___." for umbrella). If a non-base form is used (e.g. past), the sentence must make the form obvious (e.g. "Yesterday …").
 - English only. No German words in the text.
 
 Call the tool submit_exercise with your result.`;
@@ -232,7 +237,7 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     supabase.from("units").select("id, title, sort_order, textbook_unit_id").eq("id", unitId).eq("child_id", childId).maybeSingle(),
     supabase
       .from("vocab")
-      .select("id, unit_id, en, de, word_type, accepted_en, vocab_progress(box, due_date, last_seen_at), units!inner(sort_order)")
+      .select("id, unit_id, en, de, word_type, accepted_en, vocab_progress(box, due_date, last_seen_at, ease), units!inner(sort_order)")
       .eq("child_id", childId),
     supabase.rpc("unlocked_grammar", { p_child_id: childId }),
     supabase.from("exercises").select("text_type").eq("child_id", childId).order("created_at", { ascending: false }).limit(1),
@@ -244,18 +249,11 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const sortOf = (v: VocabRow) => one(v.units)?.sort_order ?? 0;
   const today = berlinToday();
 
-  // Zielwörter wählen
-  const fromUnit = byPriority(words.filter((v) => v.unit_id === unitId), today).slice(0, MAX_FROM_UNIT);
-  const reviewPool = words.filter((v) => v.unit_id !== unitId && sortOf(v) <= unit.sort_order);
-  const due = byPriority(reviewPool.filter((v) => (one(v.vocab_progress)?.due_date ?? today) <= today), today);
-  const notDue = byPriority(reviewPool.filter((v) => !due.includes(v)), today);
-  const picked = [...fromUnit];
-  for (const v of [...due, ...(fromUnit.length + due.length < MIN_TARGETS + 1 ? notDue : [])]) {
-    if (picked.length >= MAX_TARGETS) break;
-    picked.push(v);
-  }
+  // Zielwörter: nur aus der gewählten Unit (fällige und schwierige zuerst).
+  // Wiederholung älterer Units übernehmen die Karteikarten.
+  const picked = byPriority(words.filter((v) => v.unit_id === unitId), today).slice(0, MAX_TARGETS);
   if (picked.length < MIN_TARGETS) {
-    throw new GenerateError(`Für eine Übung braucht es mindestens ${MIN_TARGETS} Vokabeln in dieser oder früheren Units.`);
+    throw new GenerateError(`Für einen Lückentext braucht diese Unit mindestens ${MIN_TARGETS} Vokabeln.`);
   }
   const targets: Target[] = shuffle(picked).map((v, i) => ({ n: i + 1, vocab: v }));
 

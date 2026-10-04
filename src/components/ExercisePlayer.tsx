@@ -5,6 +5,7 @@ import Link from "next/link";
 import { saveAttempt } from "@/app/actions";
 import { grade, type GapSegment, type Result, type Segment } from "@/lib/exercise";
 import StartExercise from "./StartExercise";
+import Confetti from "./Confetti";
 
 type Props = {
   exerciseId: string;
@@ -113,22 +114,20 @@ export default function ExercisePlayer({ exerciseId, childId, childName, unitId,
                 }}
                 readOnly={!editable(i)}
                 style={{ width: gapWidth(gap(i).answer) }}
-                aria-label={`Lücke ${i + 1}: ${gap(i).hint_de}`}
+                aria-label={`Lücke ${i + 1}`}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="none"
                 spellCheck={false}
                 enterKeyHint={i === gaps.length - 1 ? "done" : "next"}
               />
-              <span className="gap-hint" lang="de">
-                {phase === "done" && st !== "correct" ? (
+              {phase === "done" && st !== "correct" ? (
+                <span className="gap-hint">
                   <strong className="gap-solution" lang="en">{gap(i).answer}</strong>
-                ) : hintAlmost ? (
-                  "fast! Schreibweise prüfen"
-                ) : (
-                  gap(i).hint_de
-                )}
-              </span>
+                </span>
+              ) : hintAlmost ? (
+                <span className="gap-hint">fast! Schreibweise prüfen</span>
+              ) : null}
             </span>
           );
         })}
@@ -151,6 +150,7 @@ export default function ExercisePlayer({ exerciseId, childId, childName, unitId,
           {saveError && <p className="error">{saveError}</p>}
           {saved && (
             <>
+              <Confetti fire={saved.total > 0 && saved.correct / saved.total >= 0.8} />
               <p className="result-score">
                 {saved.correct} von {saved.total}
               </p>

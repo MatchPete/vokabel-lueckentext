@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { deleteVocab } from "@/app/actions";
 import VocabForm from "@/components/VocabForm";
+import VocabManager from "@/components/VocabManager";
 import StartExercise from "@/components/StartExercise";
-import { SECTION_LABELS, SECTION_ORDER, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
+import { berlinToday, cardsToday, toCardWords, type ProgressRow } from "@/lib/progress";
+import { SECTION_ORDER, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
 
 export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId]">) {
   const { id, unitId } = await props.params;
@@ -12,30 +13,28 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
   const imported = typeof sp.importiert === "string" && /^\d+$/.test(sp.importiert) ? Number(sp.importiert) : null;
   const supabase = await createClient();
 
-  const [{ data: child }, { data: unit }, { data: vocab }] = await Promise.all([
+  const [{ data: child }, { data: allUnits }, { data: vocab }] = await Promise.all([
     supabase.from("children").select("id, nickname").eq("id", id).maybeSingle(),
     supabase
       .from("units")
       .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind)")
-      .eq("id", unitId)
       .eq("child_id", id)
-      .maybeSingle(),
+      .order("sort_order"),
     supabase
       .from("vocab")
-      .select("id, unit_id, section, en, de, created_at")
+      .select("id, unit_id, section, en, de, accepted_en, created_at, vocab_progress(due_date, ease, reps, lapses, correct_count, wrong_count, last_seen_at)")
       .eq("unit_id", unitId)
       .order("created_at"),
   ]);
-  if (!child || !unit) notFound();
+  const units = (allUnits ?? []) as unknown as Unit[];
+  const u = units.find((x) => x.id === unitId);
+  if (!child || !u) notFound();
 
-  const u = unit as unknown as Unit;
-  const words = (vocab ?? []) as Vocab[];
+  const words = (vocab ?? []) as unknown as Vocab[];
   const isMain = u.textbook_units?.kind === "unit";
   const sections: Section[] = isMain ? SECTION_ORDER : ["other"];
-
-  const grouped = SECTION_ORDER.map((s) => ({ section: s, items: words.filter((w) => w.section === s) })).filter(
-    (g) => g.items.length > 0,
-  );
+  const today = berlinToday();
+  const dueToday = cardsToday(toCardWords((vocab ?? []) as unknown as ProgressRow[], today), today);
 
   return (
     <main className="sheet">
@@ -52,37 +51,24 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
       )}
 
       <div className="unit-actions">
-        {words.length > 0 && <StartExercise childId={id} unitId={unitId} label="Diese Unit üben" />}
+        {words.length > 0 && (
+          <Link href={`/kind/${id}/unit/${unitId}/karten`} className="btn">
+            Karteikarten{dueToday > 0 ? ` · ${dueToday}` : ""}
+          </Link>
+        )}
+        {words.length > 0 && <StartExercise childId={id} unitId={unitId} label="Lückentext" quiet />}
         <Link href={`/kind/${id}/unit/${unitId}/foto`} className="btn-quiet">Seiten fotografieren</Link>
       </div>
 
       <VocabForm childId={id} unitId={unitId} sections={sections} />
 
-      <section aria-labelledby="list-heading">
-        <h2 className="subtitle" id="list-heading">
-          {words.length === 0 ? "Noch keine Vokabeln" : words.length === 1 ? "1 Vokabel" : `${words.length} Vokabeln`}
-        </h2>
-
-        {grouped.map((g) => (
-          <div key={g.section} className="vocab-group">
-            {isMain && <h3 className="group-title">{SECTION_LABELS[g.section]}</h3>}
-            <ul className="vocab-list ruled">
-              {g.items.map((w) => (
-                <li key={w.id} className="vocab">
-                  <span className="vocab-en" lang="en">{w.en}</span>
-                  <span className="vocab-de">{w.de}</span>
-                  <form action={deleteVocab}>
-                    <input type="hidden" name="child_id" value={id} />
-                    <input type="hidden" name="unit_id" value={unitId} />
-                    <input type="hidden" name="vocab_id" value={w.id} />
-                    <button className="icon-btn" aria-label={`${w.en} löschen`} title="Löschen">×</button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </section>
+      <VocabManager
+        childId={id}
+        unitId={unitId}
+        isMain={isMain}
+        words={words.map((w) => ({ id: w.id, en: w.en, de: w.de, section: w.section }))}
+        units={units.map((x) => ({ id: x.id, title: x.title, isMain: x.textbook_units?.kind === "unit" }))}
+      />
     </main>
   );
 }

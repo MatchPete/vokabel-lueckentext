@@ -205,3 +205,75 @@ export async function saveVocabBatch(input: { childId: string; unitId: string; r
   revalidatePath(`/kind/${input.childId}`);
   return { ok: true, inserted: toInsert.length, skipped };
 }
+
+// ---------------------------------------------------------------------------
+// Karteikarten
+// ---------------------------------------------------------------------------
+export async function recordCardReview(input: {
+  vocabId: string;
+  grade: "again" | "hard" | "good" | "easy";
+  given: string;
+  ms: number;
+}): Promise<{ ok: boolean }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("record_card_review", {
+    p_vocab_id: input.vocabId,
+    p_grade: input.grade,
+    p_given: String(input.given ?? "").slice(0, 120),
+    p_ms: Math.round(Number(input.ms) || 0),
+  });
+  return { ok: !error };
+}
+
+// ---------------------------------------------------------------------------
+// Vokabeln nachträglich verschieben oder mehrere löschen
+// ---------------------------------------------------------------------------
+export type BulkResult = { ok: true; count: number } | { ok: false; error: string };
+
+export async function moveVocab(input: {
+  childId: string;
+  fromUnitId: string;
+  toUnitId: string;
+  vocabIds: string[];
+  section: Section | null; // null = Abschnitt beibehalten
+}): Promise<BulkResult> {
+  if (!input.vocabIds?.length) return { ok: false, error: "Keine Vokabeln ausgewählt." };
+  if (input.vocabIds.length > 500) return { ok: false, error: "Zu viele auf einmal." };
+  const supabase = await createClient();
+
+  const { data: target } = await supabase
+    .from("units")
+    .select("id")
+    .eq("id", input.toUnitId)
+    .eq("child_id", input.childId)
+    .maybeSingle();
+  if (!target) return { ok: false, error: "Ziel-Unit nicht gefunden." };
+
+  const patch: { unit_id: string; section?: Section } = { unit_id: input.toUnitId };
+  if (input.section && (SECTION_ORDER as string[]).includes(input.section)) patch.section = input.section;
+
+  const { data, error } = await supabase
+    .from("vocab")
+    .update(patch)
+    .in("id", input.vocabIds)
+    .eq("child_id", input.childId)
+    .select("id");
+  if (error) return { ok: false, error: "Verschieben hat nicht geklappt." };
+
+  revalidatePath(`/kind/${input.childId}`, "layout");
+  return { ok: true, count: data?.length ?? 0 };
+}
+
+export async function deleteVocabBatch(input: { childId: string; vocabIds: string[] }): Promise<BulkResult> {
+  if (!input.vocabIds?.length) return { ok: false, error: "Keine Vokabeln ausgewählt." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("vocab")
+    .delete()
+    .in("id", input.vocabIds)
+    .eq("child_id", input.childId)
+    .select("id");
+  if (error) return { ok: false, error: "Löschen hat nicht geklappt." };
+  revalidatePath(`/kind/${input.childId}`, "layout");
+  return { ok: true, count: data?.length ?? 0 };
+}

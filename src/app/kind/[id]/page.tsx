@@ -3,13 +3,15 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { setCurrentUnit } from "@/app/actions";
 import StartExercise from "@/components/StartExercise";
+import MedalWatcher from "@/components/MedalWatcher";
+import { medalInfo, type ChildStats } from "@/lib/stats";
 import { unitTag, type Child, type Unit } from "@/lib/types";
 
 export default async function ChildPage(props: PageProps<"/kind/[id]">) {
   const { id } = await props.params;
   const supabase = await createClient();
 
-  const [{ data: child }, { data: units }, { data: vocab }] = await Promise.all([
+  const [{ data: child }, { data: units }, { data: vocab }, { data: statsRaw }] = await Promise.all([
     supabase.from("children").select("id, nickname, textbook_id, current_unit_id, created_at").eq("id", id).maybeSingle(),
     supabase
       .from("units")
@@ -17,6 +19,7 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
       .eq("child_id", id)
       .order("sort_order"),
     supabase.from("vocab").select("unit_id").eq("child_id", id),
+    supabase.rpc("child_stats", { p_child_id: id }),
   ]);
   if (!child) notFound();
 
@@ -27,6 +30,9 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
     counts.set(v.unit_id, (counts.get(v.unit_id) ?? 0) + 1);
   }
   const total = vocab?.length ?? 0;
+  const stats = statsRaw as ChildStats | null;
+  const medals = medalInfo(stats?.learned ?? 0);
+  const topMedal = medals.earned[medals.earned.length - 1];
   const current = list.find((u) => u.id === kid.current_unit_id);
   const currentOrder = current?.sort_order ?? 0;
 
@@ -36,6 +42,25 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
       <h1 className="title">{kid.nickname}</h1>
       <p className="lead">{total === 1 ? "1 Vokabel gespeichert" : `${total} Vokabeln gespeichert`}</p>
 
+      {stats && <MedalWatcher childId={kid.id} learned={stats.learned} />}
+
+      {stats && (
+        <Link href={`/kind/${kid.id}/statistik`} className="card stats-strip">
+          <span className="strip-item">
+            <strong>{stats.learned}</strong> gelernt
+          </span>
+          <span className="strip-item">
+            <strong>{stats.streak}</strong> {stats.streak === 1 ? "Tag" : "Tage"} in Folge
+            {!stats.practiced_today && stats.streak > 0 && <span className="strip-hint"> · heute noch üben</span>}
+          </span>
+          {topMedal ? (
+            <span className={`medal medal-${topMedal.tier}`} aria-label={`Medaille ${topMedal.at}`}>{topMedal.at}</span>
+          ) : (
+            medals.next && <span className="strip-hint">noch {medals.toNext} bis zur 1. Medaille</span>
+          )}
+        </Link>
+      )}
+
       {current && (
         <section className="card current" aria-labelledby="current-heading">
           <p className="eyebrow" id="current-heading">Gerade dran</p>
@@ -44,11 +69,14 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
             {current.title.replace(/^[^:]+:\s*/, "")}
           </p>
           <div className="current-actions">
-            <StartExercise childId={kid.id} unitId={current.id} label="Üben" />
-            <Link href={`/kind/${kid.id}/unit/${current.id}`} className="btn-quiet">
-              Vokabeln eintragen
+            <Link href={`/kind/${kid.id}/unit/${current.id}/karten`} className="btn">
+              Karteikarten
             </Link>
+            <StartExercise childId={kid.id} unitId={current.id} label="Lückentext" quiet />
           </div>
+          <Link href={`/kind/${kid.id}/unit/${current.id}`} className="link">
+            Vokabeln eintragen
+          </Link>
 
           <details className="change">
             <summary>Andere Unit ist dran</summary>

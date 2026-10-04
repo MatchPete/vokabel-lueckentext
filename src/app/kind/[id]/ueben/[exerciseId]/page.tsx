@@ -27,7 +27,7 @@ export default async function ExercisePage(props: PageProps<"/kind/[id]/ueben/[e
         <p className="eyebrow">{TEXT_TYPE_LABELS[ex.text_type as TextType]}{ex.theme ? ` · ${ex.theme}` : ""}</p>
         <h1 className="title" lang="en">{ex.title}</h1>
       </div>
-      <p className="lead">Schreib die englischen Wörter in die Lücken. Das deutsche Wort steht darunter.</p>
+      <p className="lead">Lies den Text und schreib die passenden englischen Wörter in die Lücken.</p>
 
       <ExercisePlayer
         key={exerciseId}
