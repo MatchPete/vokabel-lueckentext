@@ -51,7 +51,7 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
     let cancelled = false;
     async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError("Die Kamera ist in diesem Browser nicht verfügbar. Nutze den Knopf darunter.");
+        setCameraError("Die Kamera ist in diesem Browser nicht verfügbar. Nutze „Kamera-App“ darunter.");
         return;
       }
       try {
@@ -70,7 +70,7 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
         }
         setCameraOn(true);
       } catch {
-        setCameraError("Kein Zugriff auf die Kamera. Erlaube ihn in Chrome oder nutze den Knopf darunter.");
+        setCameraError("Kein Zugriff auf die Kamera. Erlaube ihn in den Browser-Einstellungen oder nutze „Kamera-App“ darunter.");
       }
     }
     start();
@@ -105,7 +105,7 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
     addShot(await toJpeg(v, v.videoWidth, v.videoHeight));
   }
 
-  async function addFiles(files: FileList | null) {
+  async function addFiles(files: File[] | FileList | null) {
     for (const f of Array.from(files ?? [])) {
       try {
         const bmp = await createImageBitmap(f);
@@ -278,10 +278,35 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
             <span />
           </button>
         )}
-        <label className="btn-quiet file-btn">
-          Kamera-App oder Galerie
-          <input type="file" accept="image/*" multiple onChange={(e) => addFiles(e.target.files)} />
-        </label>
+        <div className="file-btns">
+          {/* capture öffnet auf Android direkt die Kamera-App (ein Foto pro Antippen) */}
+          <label className="btn-quiet file-btn">
+            Kamera-App
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []); // erst kopieren, dann Feld leeren
+                e.target.value = "";
+                addFiles(files);
+              }}
+            />
+          </label>
+          <label className="btn-quiet file-btn">
+            Aus Galerie
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []); // erst kopieren, dann Feld leeren
+                e.target.value = "";
+                addFiles(files);
+              }}
+            />
+          </label>
+        </div>
       </div>
 
       <p className="hint">

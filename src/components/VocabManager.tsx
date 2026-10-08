@@ -6,6 +6,11 @@ import { deleteVocabBatch, moveVocab } from "@/app/actions";
 import { SECTION_LABELS, SECTION_ORDER, type Section } from "@/lib/types";
 
 type Word = { id: string; en: string; de: string; section: Section };
+
+/** "Ich kann Sherlock sehen.; Ich sehe Sherlock." -> Alternativen untereinander (gleiche Vokabel). */
+function alternativesOnLines(text: string): string {
+  return text.split(/\s*;\s*/).filter(Boolean).join("\n");
+}
 type UnitOption = { id: string; title: string; isMain: boolean };
 type Props = { childId: string; unitId: string; isMain: boolean; words: Word[]; units: UnitOption[] };
 
@@ -106,15 +111,13 @@ export default function VocabManager({ childId, unitId, isMain, words, units }: 
           <ul className="vocab-list ruled">
             {g.items.map((w) => (
               <li key={w.id} className={`vocab${selecting && selected.has(w.id) ? " is-selected" : ""}`}>
-                <span className="vocab-en" lang="en">{w.en}</span>
-                <span className="vocab-de">{w.de}</span>
+                <span className="vocab-en" lang="en">{alternativesOnLines(w.en)}</span>
+                <span className="vocab-de" lang="de">{alternativesOnLines(w.de)}</span>
                 {selecting ? (
                   <label className="row-check">
                     <input type="checkbox" checked={selected.has(w.id)} onChange={() => toggle(w.id)} aria-label={`${w.en} auswählen`} />
                   </label>
-                ) : (
-                  <span aria-hidden />
-                )}
+                ) : null}
               </li>
             ))}
           </ul>

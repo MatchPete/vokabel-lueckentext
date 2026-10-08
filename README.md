@@ -28,4 +28,5 @@ Lückewort-Altdaten liegen archiviert im Schema `lueckewort`.
 - [x] Karteikarten mit anpassungsfähiger Wiederholung pro Wort
 - [x] Vokabeln nachträglich verschieben / mehrere löschen
 - [x] Medaillen, Übungsserie, Statistik, Konfetti
+- [x] Mehrere Konten (Benutzername, Einladungscode)
 - [ ] Elternansicht, PIN, Keep-alive

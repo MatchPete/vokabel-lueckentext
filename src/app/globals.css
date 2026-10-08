@@ -172,6 +172,7 @@ body {
 .kid-name { font-size: 1.5rem; font-weight: 700; color: var(--ink); }
 .kid-unit { font-size: 1rem; }
 .footer { margin-top: auto; }
+.account { display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap; }
 
 /* "Gerade dran" */
 .current { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -207,18 +208,21 @@ body {
 /* Vokabelliste: zwei Spalten wie im Vokabelheft */
 .vocab-group + .vocab-group { margin-top: var(--line); }
 .group-title { margin: 0; font-size: 1rem; line-height: var(--line); color: var(--pencil); }
-.vocab-list { list-style: none; margin: 0; padding: 0; }
+/* Vokabelliste: eine Vokabel = eine Zeile, auch wenn der Text umbricht.
+   Linie nur zwischen den Vokabeln, nicht unter jeder Textzeile. */
+.vocab-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.vocab-list.ruled { background-image: none; }
 .vocab {
   display: grid;
-  grid-template-columns: 1fr 1fr 2.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   min-height: var(--line);
-  line-height: var(--line);
-  align-items: start;
+  padding: 0.4rem 0;
+  line-height: 1.35;
+  border-bottom: 1px solid var(--rule);
   position: relative;
 }
-.vocab::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--rule); transform: translateX(-1.375rem); }
-.vocab-en { color: var(--ink); font-weight: 700; padding-right: 0.75rem; overflow-wrap: anywhere; }
-.vocab-de { padding-left: 0.75rem; overflow-wrap: anywhere; }
+.vocab-en { color: var(--ink); font-weight: 700; padding-right: 0.75rem; overflow-wrap: break-word; hyphens: auto; white-space: pre-line; }
+.vocab-de { padding-left: 0.75rem; border-left: 1px solid var(--rule); overflow-wrap: break-word; hyphens: auto; white-space: pre-line; }
 .icon-btn {
   width: 2.75rem;
   height: var(--line);
@@ -305,6 +309,7 @@ body {
 .shutter span { display: block; width: 100%; height: 100%; border-radius: 50%; background: var(--ink); }
 .shutter:active span { transform: scale(0.92); }
 .file-btn { position: relative; }
+.file-btns { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 
 .thumbs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr)); gap: 0.75rem; }
@@ -398,7 +403,7 @@ body {
 .list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .group-check { display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 .group-check input, .row-check input { width: 1.3rem; height: 1.3rem; accent-color: var(--ink); }
-.row-check { display: flex; align-items: center; justify-content: center; height: var(--line); cursor: pointer; }
+.row-check { display: flex; align-items: flex-start; justify-content: center; width: 2.75rem; padding-top: 0.1rem; cursor: pointer; }
 .vocab.is-selected { background: var(--ink-tint); }
 .bulk-actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .btn-quiet.danger { color: var(--red); border-color: var(--red); }

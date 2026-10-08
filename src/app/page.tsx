@@ -3,9 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createChild } from "./actions";
 import { signOut } from "./login/actions";
 import type { Child, Textbook } from "@/lib/types";
+import { displayName } from "@/lib/auth";
 
 export default async function Home() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const [{ data: children }, { data: textbooks }] = await Promise.all([
     supabase
       .from("children")
@@ -71,7 +75,8 @@ export default async function Home() {
         </>
       )}
 
-      <form action={signOut} className="footer">
+      <form action={signOut} className="footer account">
+        <span className="hint">Angemeldet als {displayName(user?.email)}</span>
         <button className="link">Abmelden</button>
       </form>
     </main>

@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { signIn, type LoginState } from "./actions";
 
-const initial: LoginState = { email: "" };
+const initial: LoginState = { identifier: "" };
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState(signIn, initial);
@@ -14,8 +15,16 @@ export default function LoginPage() {
 
       <form action={action} className="stack">
         <label className="field">
-          <span>E-Mail-Adresse</span>
-          <input name="email" type="email" autoComplete="username" required defaultValue={state.email} />
+          <span>Benutzername</span>
+          <input
+            name="identifier"
+            autoComplete="username"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            required
+            defaultValue={state.identifier}
+          />
         </label>
         <label className="field">
           <span>Passwort</span>
@@ -31,6 +40,10 @@ export default function LoginPage() {
           {state.error}
         </p>
       )}
+
+      <p className="hint">
+        Noch kein Konto? <Link href="/registrieren" className="link">Mit Einladungscode registrieren</Link>
+      </p>
     </main>
   );
 }

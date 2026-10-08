@@ -227,7 +227,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
               {missed.map((w) => (
                 <li key={w.id} className="vocab card-missed">
                   <span className="vocab-en" lang="en">{w.en}</span>
-                  <span className="vocab-de">{w.de}</span>
+                  <span className="vocab-de" lang="de">{w.de}</span>
                 </li>
               ))}
             </ul>

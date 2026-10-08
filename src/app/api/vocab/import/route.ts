@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { isAllowedEmail } from "@/lib/auth";
 import { extractVocabulary, ExtractError } from "@/lib/extract";
 
 export const maxDuration = 60;
@@ -14,7 +13,7 @@ export async function POST(request: Request) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user?.email || !isAllowedEmail(user.email)) {
+  if (!user) {
     return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
   }
 
