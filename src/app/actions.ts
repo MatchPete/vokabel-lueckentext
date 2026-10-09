@@ -12,10 +12,24 @@ export async function createChild(formData: FormData) {
   if (!nickname || nickname.length > 30 || !textbookId) return;
 
   const supabase = await createClient();
+
+  // Gibt es den Spitznamen schon, wird einfach das bestehende Profil geöffnet (kein Doppel)
+  const findExisting = async () => {
+    const { data: kids } = await supabase.from("children").select("id, nickname");
+    return (kids ?? []).find((k) => k.nickname.trim().toLowerCase() === nickname.toLowerCase());
+  };
+  const existing = await findExisting();
+  if (existing) redirect(`/kind/${existing.id}`);
+
   const { data, error } = await supabase.rpc("create_child", {
     p_nickname: nickname,
     p_textbook_id: textbookId,
   });
+  if (error?.code === "23505") {
+    // Gleichzeitig doppelt abgeschickt: die Datenbank hat das zweite abgelehnt
+    const again = await findExisting();
+    if (again) redirect(`/kind/${again.id}`);
+  }
   if (error || !data) throw new Error("Profil konnte nicht angelegt werden.");
   redirect(`/kind/${data}`);
 }
