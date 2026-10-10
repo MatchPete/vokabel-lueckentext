@@ -1,6 +1,6 @@
 // Karteikarten: Auswahl einer Runde und Bewertung einer Antwort.
 // Die Langzeitplanung pro Wort passiert in der Datenbank (apply_review).
-import { baseForms, normalize, type Result } from "./exercise";
+import { baseForms, grade as gradeLoose, normalize, type Result } from "./exercise";
 
 export type Grade = "again" | "hard" | "good" | "easy";
 
@@ -16,7 +16,7 @@ export type CardWord = {
   seen: number; // wie oft schon abgefragt (richtig + falsch)
 };
 
-const ROUND_SIZE = 20;
+const ROUND_SIZE = 20; // Standardwerte, über die Einstellungen änderbar
 const NEW_PER_ROUND = 8;
 
 /**
@@ -40,13 +40,13 @@ export const isNew = (w: CardWord) => w.seen === 0 && w.reps === 0 && w.lapses =
  * Normale Runde: fällige Wörter (zuerst die überfälligsten und schwierigsten),
  * dazu bis zu 8 neue. Neue werden zwischen die Wiederholungen gemischt.
  */
-export function buildRound(words: CardWord[], today: string): CardWord[] {
+export function buildRound(words: CardWord[], today: string, roundSize = ROUND_SIZE, newPerRound = NEW_PER_ROUND): CardWord[] {
   const due = words
     .filter((w) => !isNew(w) && w.due_date <= today)
     .sort((a, b) => a.due_date.localeCompare(b.due_date) || a.ease - b.ease);
   const fresh = words.filter(isNew);
-  const dueTake = due.slice(0, ROUND_SIZE);
-  const newTake = fresh.slice(0, Math.min(NEW_PER_ROUND, ROUND_SIZE - dueTake.length));
+  const dueTake = due.slice(0, roundSize);
+  const newTake = fresh.slice(0, Math.min(newPerRound, roundSize - dueTake.length));
 
   const out: CardWord[] = [];
   let d = 0, n = 0;
@@ -59,11 +59,11 @@ export function buildRound(words: CardWord[], today: string): CardWord[] {
 }
 
 /** Prüfungsvorbereitung: alle Wörter, die schwierigsten zuerst (je Runde 20). */
-export function buildCramRound(words: CardWord[]): CardWord[] {
+export function buildCramRound(words: CardWord[], roundSize = ROUND_SIZE): CardWord[] {
   return [...words]
     .sort(() => Math.random() - 0.5)
     .sort((a, b) => a.ease - b.ease || b.lapses - a.lapses)
-    .slice(0, ROUND_SIZE);
+    .slice(0, roundSize);
 }
 
 /** Bewertung für die Planung. Schnelle, richtige Antworten bei bekannten Wörtern gelten als "leicht". */
@@ -77,4 +77,24 @@ export function gradeFor(result: Result, ms: number, answerLength: number, first
 export function nextDueDate(words: CardWord[], today: string): string | null {
   const future = words.map((w) => w.due_date).filter((d) => d > today).sort();
   return future[0] ?? null;
+}
+
+/**
+ * Bewertung einer getippten Antwort mit den Einstellungen des Profils:
+ * - caseSensitive: richtige Buchstaben, aber falsche Groß-/Kleinschreibung zählt als "fast"
+ * - typoCountsCorrect: ein Tippfehler ("fast") zählt als richtig
+ */
+export function gradeCard(
+  given: string,
+  sol: { answer: string; accepted: string[] },
+  opts: { caseSensitive: boolean; typoCountsCorrect: boolean },
+): { result: Result; typoForgiven: boolean } {
+  let result = gradeLoose(given, sol);
+  if (result === "correct" && opts.caseSensitive) {
+    const g = given.trim().replace(/[\u2018\u2019]/g, "'").replace(/[.!?]+$/, "");
+    const exact = [sol.answer, ...sol.accepted].some((a) => a.trim().replace(/[\u2018\u2019]/g, "'").replace(/[.!?]+$/, "") === g);
+    if (!exact) result = "almost";
+  }
+  if (result === "almost" && opts.typoCountsCorrect) return { result: "correct", typoForgiven: true };
+  return { result, typoForgiven: false };
 }

@@ -38,7 +38,10 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
 
   return (
     <main className="sheet">
-      <Link href="/" className="back">← Profile</Link>
+      <div className="top-links">
+        <Link href="/" className="back">← Profile</Link>
+        <Link href={`/kind/${kid.id}/einstellungen`} className="back">Einstellungen</Link>
+      </div>
       <h1 className="title">{kid.nickname}</h1>
       <p className="lead">{total === 1 ? "1 Vokabel gespeichert" : `${total} Vokabeln gespeichert`}</p>
 

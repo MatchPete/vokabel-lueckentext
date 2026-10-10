@@ -7,20 +7,32 @@ import { recordCardReview } from "@/app/actions";
 import Confetti from "./Confetti";
 import SpeakButton, { AutoSpeakToggle, useAutoSpeak } from "./SpeakButton";
 import { speak, unlockSpeech } from "@/lib/speech";
-import { grade as gradeAnswer, type Result } from "@/lib/exercise";
-import { buildCramRound, buildRound, cardAnswer, gradeFor, isNew, nextDueDate, type CardWord, type Grade } from "@/lib/cards";
+import { alternativesOnLines, type Result } from "@/lib/exercise";
+import { buildCramRound, buildRound, cardAnswer, gradeCard, gradeFor, isNew, nextDueDate, type CardWord, type Grade } from "@/lib/cards";
+import { DEFAULT_SETTINGS, type Settings } from "@/lib/settings";
 
-type Props = { childId: string; childName: string; unitId: string; words: CardWord[]; today: string };
-type Item = { id: string; kind: "learn" | "ask" };
+type Props = { childId: string; childName: string; unitId: string; words: CardWord[]; today: string; settings?: Settings };
+type Dir = "de_en" | "en_de";
+type Item = { id: string; kind: "learn" | "ask"; dir: Dir };
 type Phase = "start" | "card" | "done";
+
+// Zeit und Zufall nur in Ereignissen verwenden (nie beim Rendern)
+const now = () => Date.now();
+const coin = () => Math.random() < 0.5;
 
 const REQUEUE_GAP = 3; // falsch beantwortete Wörter kommen nach 3 Karten wieder
 const MAX_REPEATS = 3;
 
-export default function FlashCards({ childId, childName, unitId, words, today }: Props) {
+export default function FlashCards({ childId, childName, unitId, words, today, settings = DEFAULT_SETTINGS }: Props) {
   const router = useRouter();
   const byId = useMemo(() => new Map(words.map((w) => [w.id, w])), [words]);
-  const regular = useMemo(() => buildRound(words, today), [words, today]);
+  const regular = useMemo(
+    () => buildRound(words, today, settings.roundSize, settings.newPerRound),
+    [words, today, settings.roundSize, settings.newPerRound],
+  );
+  const gradeOpts = { caseSensitive: settings.caseSensitive, typoCountsCorrect: settings.typoCountsCorrect };
+  const pickDir = (): Dir =>
+    settings.direction === "mixed" ? (coin() ? "de_en" : "en_de") : settings.direction;
   const newCount = regular.filter(isNew).length;
 
   const [phase, setPhase] = useState<Phase>("start");
@@ -29,6 +41,8 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   const [value, setValue] = useState("");
   const [copy, setCopy] = useState("");
   const [result, setResult] = useState<Result | null>(null);
+  const [typoForgiven, setTypoForgiven] = useState(false);
+  const [revealed, setRevealed] = useState(false); // Englisch → Deutsch: Lösung aufgedeckt
   const [shownAt, setShownAt] = useState(0);
   const [graded, setGraded] = useState<Record<string, Result>>({});
   const [repeats, setRepeats] = useState<Record<string, number>>({});
@@ -58,28 +72,34 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   }
 
   useEffect(() => {
-    if (phase !== "card") return;
+    if (phase !== "card" || current?.dir === "en_de") return;
     if (result === null) inputRef.current?.focus();
     else if (result === "correct") nextRef.current?.focus();
     else copyRef.current?.focus();
   }, [phase, current, result]);
 
+  // Englisch sichtbar? Dann vorlesen (Lernkarte oder Abfrage Englisch → Deutsch)
+  const speaksOnShow = (it: Item | undefined) => it && (it.kind === "learn" || it.dir === "en_de");
+
   function start(list: CardWord[]) {
     unlockSpeech();
-    if (list[0] && isNew(list[0])) say(list[0].id);
+    const items: Item[] = list.map((w) => ({ id: w.id, kind: isNew(w) ? "learn" : "ask", dir: pickDir() }));
+    if (speaksOnShow(items[0])) say(items[0].id);
     setRound(list);
-    setQueue(list.map((w) => ({ id: w.id, kind: isNew(w) ? "learn" : "ask" })));
+    setQueue(items);
     setGraded({});
     setRepeats({});
     setFinished(new Set());
     setResult(null);
     setValue("");
-    setShownAt(Date.now());
+    setShownAt(now());
     setPhase("card");
   }
 
   function advance(nextQueue: Item[]) {
     setResult(null);
+    setTypoForgiven(false);
+    setRevealed(false);
     setValue("");
     setCopy("");
     if (nextQueue.length === 0) {
@@ -88,8 +108,8 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
       return;
     }
     setQueue(nextQueue);
-    setShownAt(Date.now());
-    if (nextQueue[0].kind === "learn") say(nextQueue[0].id);
+    setShownAt(now());
+    if (speaksOnShow(nextQueue[0])) say(nextQueue[0].id);
   }
 
   function insertAt(list: Item[], item: Item, pos: number): Item[] {
@@ -100,20 +120,22 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
   function learnDone() {
     if (!current) return;
     // Neues Wort gleich danach noch nicht abfragen, sondern nach zwei anderen Karten
-    advance(insertAt(queue.slice(1), { id: current.id, kind: "ask" }, 2));
+    advance(insertAt(queue.slice(1), { id: current.id, kind: "ask", dir: current.dir }, 2));
   }
 
   function submit(given: string) {
     if (!word || !sol || result !== null) return;
-    const r = gradeAnswer(given, sol);
+    const { result: r, typoForgiven: forgiven } = gradeCard(given, sol, gradeOpts);
     setResult(r);
+    setTypoForgiven(forgiven);
     say(word.id);
 
     // Nur die erste Abfrage eines Wortes in dieser Runde zählt für die Planung
     if (!(word.id in graded)) {
       setGraded((g) => ({ ...g, [word.id]: r }));
-      const ms = Date.now() - shownAt;
-      const g = gradeFor(r, ms, Math.min(...[sol.answer, ...sol.accepted].map((a) => a.length)), isNew(word));
+      const ms = now() - shownAt;
+      // Verziehener Tippfehler zählt als richtig, wird aber etwas früher wiederholt
+      const g = forgiven ? "hard" : gradeFor(r, ms, Math.min(...[sol.answer, ...sol.accepted].map((a) => a.length)), isNew(word));
       if (r === "correct") save({ vocabId: word.id, grade: g, given, ms });
       else setPending({ vocabId: word.id, grade: g, given, ms });
     }
@@ -125,6 +147,18 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
         continueAfter("correct");
       }, 2500);
     }
+  }
+
+  /** Englisch → Deutsch: Kind bewertet sich nach dem Aufdecken selbst. */
+  function selfRate(r: Result) {
+    if (!word || !current) return;
+    if (!(word.id in graded)) {
+      setGraded((g) => ({ ...g, [word.id]: r }));
+      const grade: Grade = r === "correct" ? "good" : r === "almost" ? "hard" : "again";
+      save({ vocabId: word.id, grade, given: `[selbst: ${r}]`, ms: now() - shownAt });
+    }
+    if (r === "correct") setFinished((f) => new Set(f).add(word.id));
+    continueAfter(r);
   }
 
   function save(entry: { vocabId: string; grade: Grade; given: string; ms: number }) {
@@ -167,7 +201,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
       setFinished((f) => new Set(f).add(current.id));
       return advance(rest);
     }
-    advance(insertAt(rest, { id: current.id, kind: "ask" }, REQUEUE_GAP));
+    advance(insertAt(rest, { id: current.id, kind: "ask", dir: current.dir }, REQUEUE_GAP));
   }
 
   // ------------------------------------------------------------------ Start
@@ -198,7 +232,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
           </>
         )}
         {words.length > 0 && (
-          <button type="button" className="btn-quiet" onClick={() => start(buildCramRound(words))}>
+          <button type="button" className="btn-quiet" onClick={() => start(buildCramRound(words, settings.roundSize))}>
             Alle Wörter üben (vor einer Abfrage)
           </button>
         )}
@@ -227,7 +261,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
               {missed.map((w) => (
                 <li key={w.id} className="vocab card-missed">
                   <span className="vocab-en" lang="en">{w.en}</span>
-                  <span className="vocab-de" lang="de">{w.de}</span>
+                  <span className="vocab-de" lang="de">{alternativesOnLines(w.de)}</span>
                 </li>
               ))}
             </ul>
@@ -269,15 +303,38 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
             <p className="fc-en" lang="en">{word.en}</p>
             <SpeakButton text={word.en} />
           </div>
-          <p className="fc-de">{word.de}</p>
+          <p className="fc-de">{alternativesOnLines(word.de)}</p>
           <button type="button" className="btn" onClick={learnDone} autoFocus>
             Gemerkt
           </button>
         </section>
+      ) : current.dir === "en_de" ? (
+        <section className="flashcard">
+          <p className="eyebrow">Was heißt das auf Deutsch?</p>
+          <div className="fc-row">
+            <p className="fc-en" lang="en">{word.en}</p>
+            <SpeakButton text={word.en} />
+          </div>
+          {!revealed ? (
+            <button type="button" className="btn" onClick={() => setRevealed(true)} autoFocus>
+              Aufdecken
+            </button>
+          ) : (
+            <>
+              <p className="fc-de fc-reveal" lang="de">{alternativesOnLines(word.de)}</p>
+              <p className="eyebrow">Hast du es gewusst?</p>
+              <div className="self-rate">
+                <button type="button" className="btn rate-good" onClick={() => selfRate("correct")} autoFocus>Gewusst</button>
+                <button type="button" className="btn-quiet rate-almost" onClick={() => selfRate("almost")}>Fast</button>
+                <button type="button" className="btn-quiet rate-wrong" onClick={() => selfRate("wrong")}>Nicht gewusst</button>
+              </div>
+            </>
+          )}
+        </section>
       ) : (
         <section className={`flashcard${result ? ` is-${result}` : ""}`}>
           <p className="eyebrow">Wie heißt das auf Englisch?</p>
-          <p className="fc-de">{word.de}</p>
+          <p className="fc-de">{alternativesOnLines(word.de)}</p>
 
           <form
             onSubmit={(e) => {
@@ -309,7 +366,7 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
 
           {result === "correct" && (
             <div className="fc-correct">
-              <p className="ok fc-feedback">Richtig!</p>
+              <p className="ok fc-feedback">{typoForgiven ? "Richtig! Kleiner Tippfehler – so schreibt man es:" : "Richtig!"}</p>
               <div className="fc-row">
                 <p className="fc-solution fc-solution-ok" lang="en">{word.en}</p>
                 <SpeakButton text={word.en} />
@@ -325,16 +382,21 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
               className="fc-correction"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (gradeAnswer(copy, sol) === "correct") continueAfter(result);
+                if (!settings.requireCopy || gradeCard(copy, sol, gradeOpts).result === "correct") continueAfter(result);
               }}
             >
               <p className={result === "almost" ? "fc-feedback warn" : "fc-feedback error"}>
-                {result === "almost" ? "Fast! So schreibt man es:" : "So heißt es:"}
+                {result === "almost"
+                  ? settings.caseSensitive && value.trim().toLowerCase() === sol.answer.trim().toLowerCase()
+                    ? "Fast! Achte auf Groß- und Kleinschreibung:"
+                    : "Fast! So schreibt man es:"
+                  : "So heißt es:"}
               </p>
               <div className="fc-row">
                 <p className="fc-solution" lang="en">{sol.answer}</p>
                 <SpeakButton text={word.en} />
               </div>
+              {settings.requireCopy && (
               <label className="field">
                 <span>Schreib es einmal ab</span>
                 <input
@@ -349,8 +411,9 @@ export default function FlashCards({ childId, childName, unitId, words, today }:
                   enterKeyHint="next"
                 />
               </label>
-              <button className="btn" disabled={gradeAnswer(copy, sol) !== "correct"}>Weiter</button>
-              {value.trim() && (
+              )}
+              <button className="btn" disabled={settings.requireCopy && gradeCard(copy, sol, gradeOpts).result !== "correct"}>Weiter</button>
+              {settings.showOverride && value.trim() && (
                 <button type="button" className="link fc-override" onClick={overrideCorrect}>
                   Meine Antwort „{value.trim()}“ war richtig
                 </button>

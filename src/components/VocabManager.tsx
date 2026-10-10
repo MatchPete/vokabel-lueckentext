@@ -2,15 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteVocabBatch, moveVocab } from "@/app/actions";
+import { deleteVocabBatch, moveVocab, setVocabExcluded } from "@/app/actions";
 import { SECTION_LABELS, SECTION_ORDER, type Section } from "@/lib/types";
+import { alternativesOnLines } from "@/lib/exercise";
 
-type Word = { id: string; en: string; de: string; section: Section };
+type Word = { id: string; en: string; de: string; section: Section; excluded?: boolean };
 
-/** "Ich kann Sherlock sehen.; Ich sehe Sherlock." -> Alternativen untereinander (gleiche Vokabel). */
-function alternativesOnLines(text: string): string {
-  return text.split(/\s*;\s*/).filter(Boolean).join("\n");
-}
 type UnitOption = { id: string; title: string; isMain: boolean };
 type Props = { childId: string; unitId: string; isMain: boolean; words: Word[]; units: UnitOption[] };
 
@@ -66,6 +63,19 @@ export default function VocabManager({ childId, unitId, isMain, words, units }: 
     });
   }
 
+  function doExclude(excluded: boolean) {
+    const ids = [...selected];
+    startTransition(async () => {
+      const res = await setVocabExcluded({ childId, vocabIds: ids, excluded });
+      if (res.ok) {
+        const n = res.count === 1 ? "1 Vokabel" : `${res.count} Vokabeln`;
+        setMessage({ ok: true, text: excluded ? `${n} gesperrt – wird nicht mehr abgefragt.` : `${n} wieder freigegeben.` });
+        reset();
+        router.refresh();
+      } else setMessage({ ok: false, text: res.error });
+    });
+  }
+
   function doDelete() {
     const ids = [...selected];
     if (!window.confirm(`${ids.length === 1 ? "1 Vokabel" : `${ids.length} Vokabeln`} wirklich löschen? Der Lernstand dieser Wörter geht dabei verloren.`)) return;
@@ -91,7 +101,12 @@ export default function VocabManager({ childId, unitId, isMain, words, units }: 
           </button>
         )}
       </div>
-      {selecting && <p className="hint">Wähle Vokabeln aus, um sie in eine andere Unit zu verschieben oder zu löschen.</p>}
+      {selecting && (
+        <p className="hint">
+          Wähle Vokabeln aus, um sie zu verschieben, zu sperren oder zu löschen. Gesperrte Vokabeln bleiben gespeichert,
+          kommen aber nicht mehr in Karteikarten und Lückentexten vor.
+        </p>
+      )}
       {message && <p className={message.ok ? "ok" : "error"} role="status">{message.text}</p>}
 
       {groups.map((g) => (
@@ -110,8 +125,15 @@ export default function VocabManager({ childId, unitId, isMain, words, units }: 
           )}
           <ul className="vocab-list ruled">
             {g.items.map((w) => (
-              <li key={w.id} className={`vocab${selecting && selected.has(w.id) ? " is-selected" : ""}`}>
-                <span className="vocab-en" lang="en">{alternativesOnLines(w.en)}</span>
+              <li
+                key={w.id}
+                className={`vocab${selecting && selected.has(w.id) ? " is-selected" : ""}${w.excluded ? " is-excluded" : ""}`}
+                title={w.excluded ? "Gesperrt: wird nicht abgefragt" : undefined}
+              >
+                <span className="vocab-en" lang="en">
+                  {alternativesOnLines(w.en)}
+                  {w.excluded && <span className="badge badge-locked">gesperrt</span>}
+                </span>
                 <span className="vocab-de" lang="de">{alternativesOnLines(w.de)}</span>
                 {selecting ? (
                   <label className="row-check">
@@ -130,6 +152,11 @@ export default function VocabManager({ childId, unitId, isMain, words, units }: 
             <div className="bulk-actions">
               <span>{selected.size} ausgewählt</span>
               <button type="button" className="btn" onClick={() => setMoving(true)} disabled={pending}>Verschieben</button>
+              {[...selected].some((id) => !words.find((w) => w.id === id)?.excluded) ? (
+                <button type="button" className="btn-quiet" onClick={() => doExclude(true)} disabled={pending}>Sperren</button>
+              ) : (
+                <button type="button" className="btn-quiet" onClick={() => doExclude(false)} disabled={pending}>Freigeben</button>
+              )}
               <button type="button" className="btn-quiet danger" onClick={doDelete} disabled={pending}>Löschen</button>
             </div>
           ) : (

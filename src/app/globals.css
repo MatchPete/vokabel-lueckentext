@@ -362,7 +362,7 @@ body {
 .flashcard.is-correct { border-top-color: var(--green); }
 .flashcard.is-almost { border-top-color: #e2a33a; }
 .flashcard.is-wrong { border-top-color: var(--red); }
-.fc-de { margin: 0; font-size: 1.75rem; font-weight: 700; color: #1f2733; line-height: 1.25; }
+.fc-de { white-space: pre-line; margin: 0; font-size: 1.75rem; font-weight: 700; color: #1f2733; line-height: 1.25; }
 .fc-en { margin: 0; font-size: 2rem; font-weight: 700; color: var(--ink); line-height: 1.2; }
 .is-learn .fc-de { font-size: 1.25rem; font-weight: 400; color: var(--pencil); }
 .fc-input {
@@ -480,6 +480,34 @@ body {
 @media (orientation: landscape) and (max-height: 500px) {
   .capture > .hint { display: none; }
 }
+
+/* Einstellungen */
+.top-links { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.save-status { margin: calc(var(--line) * -0.5) 0 0; min-height: 1.5em; font-size: 0.95rem; }
+.settings-group { gap: 1.25rem; }
+.setting { border: 0; margin: 0; padding: 0; }
+.setting legend { font-size: 0.95rem; font-weight: 700; color: var(--pencil); margin-bottom: 0.5rem; padding: 0; }
+.segmented { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.segmented button {
+  font: inherit; font-size: 0.95rem; color: var(--ink); background: transparent;
+  border: 1.5px solid #c9d4ea; border-radius: 999px; padding: 0.45rem 0.9rem; min-height: 2.5rem; cursor: pointer;
+}
+.segmented button.is-on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 700; }
+.toggle { display: flex; gap: 0.75rem; align-items: flex-start; cursor: pointer; }
+.toggle input, .check input { width: 1.3rem; height: 1.3rem; accent-color: var(--ink); flex-shrink: 0; margin-top: 0.15rem; }
+.toggle small { display: block; font-size: 0.85rem; color: var(--pencil-light); margin-top: 0.15rem; }
+.checks { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+.check { display: inline-flex; gap: 0.5rem; align-items: center; cursor: pointer; }
+.danger-zone summary { color: var(--red); }
+
+/* Gesperrte Vokabeln, Tipp im Lückentext, Selbstbewertung */
+.vocab.is-excluded .vocab-en, .vocab.is-excluded .vocab-de { opacity: 0.5; text-decoration: line-through; text-decoration-thickness: 1px; }
+.badge-locked { margin-left: 0.5rem; text-decoration: none; display: inline-block; vertical-align: middle; }
+.gap-tip { font: inherit; font-size: 0.75rem; color: var(--ink-soft); background: none; border: 0; padding: 0.15rem 0.3rem; text-decoration: underline; cursor: pointer; }
+.fc-reveal { padding-top: 0.5rem; border-top: 1px dashed var(--rule); }
+.self-rate { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.rate-almost { color: #8a5a0a; border-color: #e2a33a; }
+.rate-wrong { color: var(--red); border-color: var(--red); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

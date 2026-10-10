@@ -40,9 +40,9 @@ export function toCardWords(rows: ProgressRow[], today: string): CardWord[] {
   });
 }
 
-/** Anzahl Karten, die heute anstehen (fällige Wiederholungen + neue, max. 8 neue). */
-export function cardsToday(words: CardWord[], today: string): number {
+/** Anzahl Karten, die heute anstehen (fällige Wiederholungen + neue, begrenzt wie eine Runde). */
+export function cardsToday(words: CardWord[], today: string, roundSize = 20, newPerRound = 8): number {
   const due = words.filter((w) => !isNew(w) && w.due_date <= today).length;
-  const fresh = Math.min(words.filter(isNew).length, 8);
-  return Math.min(due + fresh, 20);
+  const fresh = Math.min(words.filter(isNew).length, newPerRound);
+  return Math.min(due + fresh, roundSize);
 }

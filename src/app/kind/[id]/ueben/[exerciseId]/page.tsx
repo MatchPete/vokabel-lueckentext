@@ -4,13 +4,14 @@ import { createClient } from "@/lib/supabase/server";
 import { flagExercise } from "@/app/actions";
 import ExercisePlayer from "@/components/ExercisePlayer";
 import { TEXT_TYPE_LABELS, type Segment, type TextType } from "@/lib/exercise";
+import { parseSettings } from "@/lib/settings";
 
 export default async function ExercisePage(props: PageProps<"/kind/[id]/ueben/[exerciseId]">) {
   const { id, exerciseId } = await props.params;
   const supabase = await createClient();
 
   const [{ data: child }, { data: ex }] = await Promise.all([
-    supabase.from("children").select("id, nickname").eq("id", id).maybeSingle(),
+    supabase.from("children").select("id, nickname, settings").eq("id", id).maybeSingle(),
     supabase
       .from("exercises")
       .select("id, child_id, unit_id, title, text_type, theme, segments, flagged")
@@ -19,6 +20,7 @@ export default async function ExercisePage(props: PageProps<"/kind/[id]/ueben/[e
       .maybeSingle(),
   ]);
   if (!child || !ex) notFound();
+  const settings = parseSettings(child.settings);
 
   return (
     <main className="sheet">
@@ -27,10 +29,14 @@ export default async function ExercisePage(props: PageProps<"/kind/[id]/ueben/[e
         <p className="eyebrow">{TEXT_TYPE_LABELS[ex.text_type as TextType]}{ex.theme ? ` · ${ex.theme}` : ""}</p>
         <h1 className="title" lang="en">{ex.title}</h1>
       </div>
-      <p className="lead">Lies den Text und schreib die passenden englischen Wörter in die Lücken.</p>
+      <p className="lead">
+        Lies den Text und schreib die passenden englischen Wörter in die Lücken.
+        {settings.gapHint === "tap" && " Bei „Tipp“ siehst du das deutsche Wort."}
+      </p>
 
       <ExercisePlayer
         key={exerciseId}
+        hintMode={settings.gapHint}
         exerciseId={ex.id}
         childId={id}
         childName={child.nickname}

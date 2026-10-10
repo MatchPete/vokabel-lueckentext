@@ -109,3 +109,8 @@ export function baseForms(en: string): string[] {
 export function gapsOf(segments: Segment[]): GapSegment[] {
   return segments.filter((s): s is GapSegment => s.t === "gap");
 }
+
+/** "Ich kann Sherlock sehen.; Ich sehe Sherlock." -> Alternativen untereinander (für die Anzeige). */
+export function alternativesOnLines(text: string): string {
+  return text.split(/\s*;\s*/).filter(Boolean).join("\n");
+}

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { SECTION_ORDER, type Section } from "@/lib/types";
 import { gapsOf, grade, normalize, type Segment } from "@/lib/exercise";
+import { parseSettings, type Settings } from "@/lib/settings";
 
 export async function createChild(formData: FormData) {
   const nickname = String(formData.get("nickname") ?? "").trim();
@@ -115,6 +116,7 @@ export async function saveAttempt(input: {
   exerciseId: string;
   firstTry: string[];
   secondTry: (string | null)[];
+  hinted?: number[]; // Lücken, bei denen der "Tipp" angezeigt wurde
 }): Promise<SaveResult> {
   const supabase = await createClient();
   const { data: ex } = await supabase
@@ -134,15 +136,16 @@ export async function saveAttempt(input: {
     .single();
   if (aErr || !attempt) return { ok: false, error: "Speichern hat nicht geklappt." };
 
-  const rows: { attempt_id: string; vocab_id: string; given: string; result: string; try_no: number }[] = [];
+  const hinted = new Set((input.hinted ?? []).filter((n) => Number.isInteger(n)));
+  const rows: { attempt_id: string; vocab_id: string; given: string; result: string; try_no: number; hinted: boolean }[] = [];
   gaps.forEach((gap, i) => {
     const first = (input.firstTry[i] ?? "").slice(0, 120);
     const r1 = grade(first, gap);
-    rows.push({ attempt_id: attempt.id, vocab_id: gap.vocab_id, given: first, result: r1, try_no: 1 });
+    rows.push({ attempt_id: attempt.id, vocab_id: gap.vocab_id, given: first, result: r1, try_no: 1, hinted: hinted.has(i) });
     const second = input.secondTry[i];
     if (r1 !== "correct" && second != null) {
       const s = second.slice(0, 120);
-      rows.push({ attempt_id: attempt.id, vocab_id: gap.vocab_id, given: s, result: grade(s, gap), try_no: 2 });
+      rows.push({ attempt_id: attempt.id, vocab_id: gap.vocab_id, given: s, result: grade(s, gap), try_no: 2, hinted: hinted.has(i) });
     }
   });
 
@@ -288,6 +291,57 @@ export async function deleteVocabBatch(input: { childId: string; vocabIds: strin
     .eq("child_id", input.childId)
     .select("id");
   if (error) return { ok: false, error: "Löschen hat nicht geklappt." };
+  revalidatePath(`/kind/${input.childId}`, "layout");
+  return { ok: true, count: data?.length ?? 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Einstellungen, Profil, Vokabeln sperren
+// ---------------------------------------------------------------------------
+
+export async function updateSettings(input: { childId: string; settings: Settings }): Promise<{ ok: boolean }> {
+  const clean = parseSettings(input.settings); // nur gültige Werte speichern
+  const supabase = await createClient();
+  const { error } = await supabase.from("children").update({ settings: clean }).eq("id", input.childId);
+  revalidatePath(`/kind/${input.childId}`, "layout");
+  return { ok: !error };
+}
+
+export async function renameChild(input: { childId: string; nickname: string }): Promise<{ ok: boolean; error?: string }> {
+  const nickname = input.nickname.trim();
+  if (!nickname || nickname.length > 30) return { ok: false, error: "Bitte einen Spitznamen mit 1 bis 30 Zeichen eingeben." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("children").update({ nickname }).eq("id", input.childId);
+  if (error?.code === "23505") return { ok: false, error: "Diesen Namen gibt es schon." };
+  if (error) return { ok: false, error: "Umbenennen hat nicht geklappt." };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Löscht ein Profil samt Vokabeln und Lernstand. Zur Sicherheit muss der Name eingetippt werden. */
+export async function deleteChild(input: { childId: string; confirmName: string }): Promise<{ ok: boolean; error?: string }> {
+  const supabase = await createClient();
+  const { data: child } = await supabase.from("children").select("id, nickname").eq("id", input.childId).maybeSingle();
+  if (!child) return { ok: false, error: "Profil nicht gefunden." };
+  if (child.nickname.trim().toLowerCase() !== input.confirmName.trim().toLowerCase()) {
+    return { ok: false, error: `Zum Löschen bitte genau „${child.nickname}“ eintippen.` };
+  }
+  const { error } = await supabase.from("children").delete().eq("id", input.childId);
+  if (error) return { ok: false, error: "Löschen hat nicht geklappt." };
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+export async function setVocabExcluded(input: { childId: string; vocabIds: string[]; excluded: boolean }): Promise<BulkResult> {
+  if (!input.vocabIds?.length) return { ok: false, error: "Keine Vokabeln ausgewählt." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("vocab")
+    .update({ excluded: input.excluded })
+    .in("id", input.vocabIds)
+    .eq("child_id", input.childId)
+    .select("id");
+  if (error) return { ok: false, error: "Das hat nicht geklappt." };
   revalidatePath(`/kind/${input.childId}`, "layout");
   return { ok: true, count: data?.length ?? 0 };
 }

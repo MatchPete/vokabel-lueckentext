@@ -29,4 +29,5 @@ Lückewort-Altdaten liegen archiviert im Schema `lueckewort`.
 - [x] Vokabeln nachträglich verschieben / mehrere löschen
 - [x] Medaillen, Übungsserie, Statistik, Konfetti
 - [x] Mehrere Konten (Benutzername, Einladungscode)
+- [x] Einstellungen pro Profil, Vokabeln sperren, Profil umbenennen/löschen
 - [ ] Elternansicht, PIN, Keep-alive

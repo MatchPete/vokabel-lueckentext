@@ -2,6 +2,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { aiClient, AiConfigError } from "./ai";
 import { chooseLevel, CORE_WORDS, knownWordSet, LEVELS, unknownWords, type Level } from "./level";
+import { parseSettings } from "./settings";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { baseForms, FORM_HINTS, normalize, type GapForm, type Segment, type TextType } from "./exercise";
 
@@ -37,6 +38,7 @@ const FORM_RULES: Record<GapForm, string> = {
 
 type VocabRow = {
   id: string;
+  excluded?: boolean;
   unit_id: string;
   en: string;
   de: string;
@@ -246,11 +248,11 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     supabase.from("units").select("id, title, sort_order, textbook_unit_id").eq("id", unitId).eq("child_id", childId).maybeSingle(),
     supabase
       .from("vocab")
-      .select("id, unit_id, en, de, word_type, accepted_en, vocab_progress(box, due_date, last_seen_at, ease, correct_count), units!inner(sort_order)")
+      .select("id, unit_id, en, de, word_type, accepted_en, excluded, vocab_progress(box, due_date, last_seen_at, ease, correct_count), units!inner(sort_order)")
       .eq("child_id", childId),
     supabase.from("child_grammar_overrides").select("topic_id, enabled").eq("child_id", childId),
     supabase.from("exercises").select("text_type").eq("child_id", childId).order("created_at", { ascending: false }).limit(1),
-    supabase.from("children").select("textbook_id, current:units!children_current_unit_fk(sort_order)").eq("id", childId).maybeSingle(),
+    supabase.from("children").select("textbook_id, settings, current:units!children_current_unit_fk(sort_order)").eq("id", childId).maybeSingle(),
   ]);
   if (!unit || !child) throw new GenerateError("Unit nicht gefunden.", 404);
 
@@ -291,12 +293,14 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const recentScores = ((recent ?? []) as { score: number | null; max_score: number | null }[])
     .filter((r) => r.max_score)
     .map((r) => (r.score ?? 0) / (r.max_score as number));
-  const level = chooseLevel(masteredCount, recentScores);
+  const settings = parseSettings((child as unknown as { settings: unknown }).settings);
+  const level: Level = settings.level === "auto" ? chooseLevel(masteredCount, recentScores) : settings.level;
   const cfg = LEVELS[level];
 
   // Zielwörter: nur aus der gewählten Unit (fällige und schwierige zuerst).
   // Wiederholung älterer Units übernehmen die Karteikarten.
-  const picked = byPriority(words.filter((v) => v.unit_id === unitId), today).slice(0, cfg.maxTargets);
+  // Gesperrte Vokabeln werden nie abgefragt (dürfen aber als bekannte Wörter im Text vorkommen)
+  const picked = byPriority(words.filter((v) => v.unit_id === unitId && !v.excluded), today).slice(0, cfg.maxTargets);
   if (picked.length < MIN_TARGETS) {
     throw new GenerateError(`Für einen Lückentext braucht diese Unit mindestens ${MIN_TARGETS} Vokabeln.`);
   }
@@ -305,7 +309,8 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const knownSet = knownWordSet(knownRows.map((v) => v.en));
 
   const lastType = (lastEx?.[0]?.text_type as TextType | undefined) ?? null;
-  const textType = shuffle(TEXT_TYPES.filter((t) => t !== lastType))[0];
+  const allowedTypes = settings.textTypes.length ? settings.textTypes : TEXT_TYPES;
+  const textType = shuffle(allowedTypes.length > 1 ? allowedTypes.filter((t) => t !== lastType) : allowedTypes)[0];
 
   const { client, model: MODEL } = ai;
   let feedback: string | undefined;

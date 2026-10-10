@@ -8,6 +8,7 @@ import StartExercise from "./StartExercise";
 import Confetti from "./Confetti";
 
 type Props = {
+  hintMode?: "never" | "tap" | "always";
   exerciseId: string;
   childId: string;
   childName: string;
@@ -23,7 +24,8 @@ function gapWidth(answer: string): string {
   return n <= 5 ? "7ch" : n <= 10 ? "12ch" : `${Math.min(n + 3, 26)}ch`;
 }
 
-export default function ExercisePlayer({ exerciseId, childId, childName, unitId, segments }: Props) {
+export default function ExercisePlayer({ hintMode = "never", exerciseId, childId, childName, unitId, segments }: Props) {
+  const [shownHints, setShownHints] = useState<Set<number>>(new Set());
   const gaps = segments.filter((s): s is GapSegment => s.t === "gap");
   const [values, setValues] = useState<string[]>(() => gaps.map(() => ""));
   const [phase, setPhase] = useState<Phase>("first");
@@ -50,7 +52,9 @@ export default function ExercisePlayer({ exerciseId, childId, childName, unitId,
   function finish(firstTry: string[], secondTry: (string | null)[]) {
     setPhase("done");
     startSaving(async () => {
-      const res = await saveAttempt({ exerciseId, firstTry, secondTry });
+      // Nur bei "Auf Antippen" zählt der Tipp als Hilfe; bei "Immer" gehört er zur Aufgabe
+      const hinted = hintMode === "tap" ? [...shownHints] : [];
+      const res = await saveAttempt({ exerciseId, firstTry, secondTry, hinted });
       if (res.ok) setSaved({ correct: res.correct, total: res.total });
       else setSaveError(res.error);
     });
@@ -127,6 +131,17 @@ export default function ExercisePlayer({ exerciseId, childId, childName, unitId,
                 </span>
               ) : hintAlmost ? (
                 <span className="gap-hint">fast! Schreibweise prüfen</span>
+              ) : hintMode === "always" || shownHints.has(i) ? (
+                <span className="gap-hint" lang="de">{gap(i).hint_de}</span>
+              ) : hintMode === "tap" && phase !== "done" ? (
+                <button
+                  type="button"
+                  className="gap-tip"
+                  onClick={() => setShownHints((h) => new Set(h).add(i))}
+                  aria-label={`Tipp für Lücke ${i + 1} anzeigen`}
+                >
+                  Tipp
+                </button>
               ) : null}
             </span>
           );

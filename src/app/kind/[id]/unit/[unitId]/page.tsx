@@ -6,6 +6,7 @@ import VocabManager from "@/components/VocabManager";
 import StartExercise from "@/components/StartExercise";
 import { berlinToday, cardsToday, toCardWords, type ProgressRow } from "@/lib/progress";
 import { SECTION_ORDER, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
+import { parseSettings } from "@/lib/settings";
 
 export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId]">) {
   const { id, unitId } = await props.params;
@@ -14,7 +15,7 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
   const supabase = await createClient();
 
   const [{ data: child }, { data: allUnits }, { data: vocab }] = await Promise.all([
-    supabase.from("children").select("id, nickname").eq("id", id).maybeSingle(),
+    supabase.from("children").select("id, nickname, settings").eq("id", id).maybeSingle(),
     supabase
       .from("units")
       .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind)")
@@ -22,7 +23,7 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
       .order("sort_order"),
     supabase
       .from("vocab")
-      .select("id, unit_id, section, en, de, accepted_en, created_at, vocab_progress(due_date, ease, reps, lapses, correct_count, wrong_count, last_seen_at)")
+      .select("id, unit_id, section, en, de, accepted_en, excluded, created_at, vocab_progress(due_date, ease, reps, lapses, correct_count, wrong_count, last_seen_at)")
       .eq("unit_id", unitId)
       .order("created_at"),
   ]);
@@ -34,7 +35,9 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
   const isMain = u.textbook_units?.kind === "unit";
   const sections: Section[] = isMain ? SECTION_ORDER : ["other"];
   const today = berlinToday();
-  const dueToday = cardsToday(toCardWords((vocab ?? []) as unknown as ProgressRow[], today), today);
+  const settings = parseSettings(child.settings);
+  const active = ((vocab ?? []) as unknown as (ProgressRow & { excluded: boolean })[]).filter((v) => !v.excluded);
+  const dueToday = cardsToday(toCardWords(active, today), today, settings.roundSize, settings.newPerRound);
 
   return (
     <main className="sheet">
@@ -51,12 +54,12 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
       )}
 
       <div className="unit-actions">
-        {words.length > 0 && (
+        {active.length > 0 && (
           <Link href={`/kind/${id}/unit/${unitId}/karten`} className="btn">
             Karteikarten{dueToday > 0 ? ` · ${dueToday}` : ""}
           </Link>
         )}
-        {words.length > 0 && <StartExercise childId={id} unitId={unitId} label="Lückentext" quiet />}
+        {active.length > 0 && <StartExercise childId={id} unitId={unitId} label="Lückentext" quiet />}
         <Link href={`/kind/${id}/unit/${unitId}/foto`} className="btn-quiet">Seiten fotografieren</Link>
       </div>
 
@@ -66,7 +69,7 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
         childId={id}
         unitId={unitId}
         isMain={isMain}
-        words={words.map((w) => ({ id: w.id, en: w.en, de: w.de, section: w.section }))}
+        words={words.map((w) => ({ id: w.id, en: w.en, de: w.de, section: w.section, excluded: Boolean((w as Vocab & { excluded?: boolean }).excluded) }))}
         units={units.map((x) => ({ id: x.id, title: x.title, isMain: x.textbook_units?.kind === "unit" }))}
       />
     </main>
