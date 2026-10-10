@@ -1,7 +1,7 @@
 // Gemeinsame Logik für Übungen: Datenformat, Hinweise und Bewertung.
 // Wird im Browser (sofortiges Feedback) und auf dem Server (Speichern) identisch verwendet.
 
-export type GapForm = "base" | "plural" | "third_person" | "ing" | "past" | "genitive";
+export type GapForm = "base" | "plural" | "third_person" | "ing" | "past" | "genitive" | "participle";
 
 export type TextSegment = { t: "text"; v: string };
 export type GapSegment = {
@@ -31,6 +31,7 @@ export const FORM_HINTS: Record<GapForm, string> = {
   ing: "-ing-Form",
   past: "Vergangenheit",
   genitive: "’s-Form",
+  participle: "Partizip",
 };
 
 export type Result = "correct" | "almost" | "wrong";

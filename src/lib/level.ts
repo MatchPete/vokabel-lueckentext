@@ -32,8 +32,9 @@ export const LEVELS: Record<Level, { label: string; maxTargets: number; maxUnkno
 };
 
 /** Stufe nach Größe des Wortschatzes; bei schwachen letzten Lückentexten eine Stufe leichter. */
-export function chooseLevel(knownWords: number, recentScores: number[]): Level {
+export function chooseLevel(knownWords: number, recentScores: number[], minLevel: Level = 1): Level {
   let level: Level = knownWords < 80 ? 1 : knownWords < 250 ? 2 : 3;
+  level = Math.max(level, minLevel) as Level;
   if (recentScores.length >= 2) {
     const avg = recentScores.reduce((a, b) => a + b, 0) / recentScores.length;
     if (avg < 0.6 && level > 1) level = (level - 1) as Level;

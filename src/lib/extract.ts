@@ -1,7 +1,7 @@
 // Liest Vokabeln aus einem Foto einer Buchseite (Claude Vision). Läuft nur auf dem Server.
 import type Anthropic from "@anthropic-ai/sdk";
 import { aiClient, AiConfigError } from "./ai";
-import { SECTION_ORDER, type Section } from "./types";
+import { SECTION_LABELS, SECTION_ORDER, type Section } from "./types";
 
 const WORD_TYPES = ["noun", "verb", "adjective", "adverb", "phrase", "other"] as const;
 
@@ -14,47 +14,52 @@ export type ExtractedEntry = {
   uncertain: boolean;
 };
 
-const TOOL: Anthropic.Tool = {
-  name: "submit_vocabulary",
-  description: "Submit all vocabulary entries found on the page, in reading order.",
-  input_schema: {
-    type: "object",
-    properties: {
-      is_vocabulary_page: { type: "boolean", description: "false if the photo does not show a vocabulary list" },
-      entries: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            en: { type: "string", description: "English word or phrase exactly as printed (keep 'to' before verbs if printed). No phonetic transcription." },
-            de: { type: "string", description: "German translation as printed. Several meanings separated by ', '." },
-            section: {
-              type: "string",
-              enum: [...SECTION_ORDER, "unknown"],
-              description: "Book section heading this entry belongs to (Check-in, Station 1/2/3, Story, Skills, Unit task). 'unknown' if no heading is visible for it.",
+function buildTool(sections: Section[]): Anthropic.Tool {
+  return {
+    name: "submit_vocabulary",
+    description: "Submit all vocabulary entries found on the page, in reading order.",
+    input_schema: {
+      type: "object",
+      properties: {
+        is_vocabulary_page: { type: "boolean", description: "false if the photo does not show a vocabulary list" },
+        entries: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              en: { type: "string", description: "English word or phrase exactly as printed (keep 'to' before verbs if printed). No phonetic transcription." },
+              de: { type: "string", description: "German translation as printed. Several meanings separated by ', '." },
+              section: {
+                type: "string",
+                enum: [...sections, "unknown"],
+                description: `Book section heading this entry belongs to (${sections.filter((x) => x !== "other").map((x) => SECTION_LABELS[x]).join(", ")}). 'unknown' if no heading is visible for it.`,
+              },
+              word_type: { type: "string", enum: [...WORD_TYPES], description: "Only if obvious." },
+              uncertain: { type: "boolean", description: "true if any part was hard to read or might be wrong" },
             },
-            word_type: { type: "string", enum: [...WORD_TYPES], description: "Only if obvious." },
-            uncertain: { type: "boolean", description: "true if any part was hard to read or might be wrong" },
+            required: ["en", "de", "section", "uncertain"],
           },
-          required: ["en", "de", "section", "uncertain"],
         },
       },
+      required: ["is_vocabulary_page", "entries"],
     },
-    required: ["is_vocabulary_page", "entries"],
-  },
-};
+  };
+}
 
-const PROMPT = `This photo shows a page from the vocabulary section of an English textbook for German students in their first year of English (Green Line 1, Bavaria). Typically there are columns: English word or phrase, sometimes phonetic transcription and an English example sentence, and the German translation.
+function buildPrompt(bookName: string, sections: Section[]): string {
+  const headings = sections.filter((x) => x !== "other").map((x) => `"${SECTION_LABELS[x]}"`).join(", ");
+  return `This photo shows a page from the vocabulary section of the English textbook "${bookName || "an English textbook for German students"}". Typically there are columns: English word or phrase, sometimes phonetic transcription and an English example sentence, and the German translation.
 
 Extract every vocabulary entry on the page in reading order.
 - Copy the English and German exactly as printed. Do not correct, translate or add anything yourself.
 - Ignore phonetic transcriptions, example sentences, page numbers, pictures, grammar boxes, tips and exercises.
 - Keep abbreviations like "sb." and "sth." exactly as printed.
-- Section headings such as "Check-in", "Station 1", "Station 2", "Story", "Skills" or "Unit task" mark which section the following entries belong to.
+- Section headings such as ${headings} mark which section the following entries belong to.
 - If an entry is cut off at the edge of the photo or unreadable, skip it. Never guess missing letters.
 - Mark an entry as uncertain if you are not fully sure you read it correctly.
 
 Call the tool submit_vocabulary with the result.`;
+}
 
 export class ExtractError extends Error {
   constructor(message: string, public status = 400) {
@@ -62,7 +67,12 @@ export class ExtractError extends Error {
   }
 }
 
-export async function extractVocabulary(image: Uint8Array, mediaType: "image/jpeg" | "image/png" | "image/webp") {
+export async function extractVocabulary(
+  image: Uint8Array,
+  mediaType: "image/jpeg" | "image/png" | "image/webp",
+  book: { name: string; sections: Section[] } = { name: "", sections: SECTION_ORDER },
+) {
+  const TOOL = buildTool(book.sections);
   let ai: ReturnType<typeof aiClient>;
   try {
     ai = aiClient();
@@ -81,7 +91,7 @@ export async function extractVocabulary(image: Uint8Array, mediaType: "image/jpe
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: mediaType, data: Buffer.from(image).toString("base64") } },
-          { type: "text", text: PROMPT },
+          { type: "text", text: buildPrompt(book.name, book.sections) },
         ],
       },
     ],
@@ -103,7 +113,7 @@ export async function extractVocabulary(image: Uint8Array, mediaType: "image/jpe
     const en = clean(e.en, 120);
     const de = clean(e.de, 120);
     if (!en || !de) continue;
-    const section = (SECTION_ORDER as string[]).includes(String(e.section)) ? (e.section as Section) : null;
+    const section = (book.sections as string[]).includes(String(e.section)) ? (e.section as Section) : null;
     const wt = (WORD_TYPES as readonly string[]).includes(String(e.word_type)) ? (e.word_type as ExtractedEntry["word_type"]) : null;
     entries.push({
       en,

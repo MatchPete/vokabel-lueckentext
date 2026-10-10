@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { extractVocabulary, ExtractError } from "@/lib/extract";
+import { sectionsFor } from "@/lib/types";
 
 export const maxDuration = 60;
 
@@ -39,7 +40,23 @@ export async function POST(request: Request) {
 
   try {
     // Das Foto wird nur an Claude weitergereicht und nirgends gespeichert.
-    const result = await extractVocabulary(new Uint8Array(await file.arrayBuffer()), type);
+    // Buch des Kindes und Abschnitte der Unit für die Anweisung an Claude
+    const childId = String(form?.get("child_id") ?? "");
+    const unitId = String(form?.get("unit_id") ?? "");
+    const [{ data: child }, { data: unit }] = await Promise.all([
+      childId
+        ? supabase.from("children").select("textbooks(name, sections)").eq("id", childId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      unitId
+        ? supabase.from("units").select("textbook_units(kind, sections)").eq("id", unitId).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const tb = (child as unknown as { textbooks: { name: string; sections: string[] } | null } | null)?.textbooks;
+    const tu = (unit as unknown as { textbook_units: { kind: string; sections: string[] | null } | null } | null)?.textbook_units;
+    const result = await extractVocabulary(new Uint8Array(await file.arrayBuffer()), type, {
+      name: tb?.name ?? "",
+      sections: sectionsFor(tb?.sections, tu ? tu.kind === "unit" : true, tu?.sections),
+    });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof ExtractError) return NextResponse.json({ error: e.message }, { status: e.status });

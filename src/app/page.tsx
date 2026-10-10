@@ -15,7 +15,7 @@ export default async function Home() {
       .from("children")
       .select("id, nickname, textbook_id, current_unit_id, created_at, current:units!children_current_unit_fk(title)")
       .order("created_at"),
-    supabase.from("textbooks").select("id, name, edition").order("name"),
+    supabase.from("textbooks").select("id, name, edition").order("lernjahr").order("name"),
   ]);
 
   // current ist eine n:1-Beziehung, PostgREST liefert daher ein Objekt (oder null).
@@ -34,14 +34,21 @@ export default async function Home() {
           <p className="hint">Englischbuch: {books[0].name}</p>
         </>
       ) : (
+        <>
         <label className="field">
           <span>Englischbuch</span>
-          <select name="textbook_id" required>
+          <select name="textbook_id" required defaultValue="">
+            <option value="" disabled>Bitte wählen</option>
             {books.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
+              <option key={b.id} value={b.id}>
+                {b.name}
+                {b.edition ? ` (${b.edition})` : ""}
+              </option>
             ))}
           </select>
         </label>
+        <p className="hint">Die Units und die Grammatik richten sich nach dem Buch. Fehlt euer Buch, sag dem Betreiber der App Bescheid.</p>
+        </>
       )}
       <button className="btn">Profil anlegen</button>
     </form>

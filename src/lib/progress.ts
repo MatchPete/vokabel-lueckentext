@@ -46,3 +46,33 @@ export function cardsToday(words: CardWord[], today: string, roundSize = 20, new
   const fresh = Math.min(words.filter(isNew).length, newPerRound);
   return Math.min(due + fresh, roundSize);
 }
+
+type TodayRow = ProgressRow & {
+  unit_id: string;
+  created_at: string;
+  units: { sort_order: number; title: string } | null;
+};
+
+/**
+ * Wörter für "Heute üben": alle Lektionen bis zur aktuellen (ohne gesperrte).
+ * Neue Wörter der aktuellen Lektion stehen vorn, damit sie zuerst eingeführt werden.
+ */
+export function wordsUpToCurrent(rows: TodayRow[], today: string, currentUnitId: string | null, currentSort: number | null) {
+  const inScope = rows.filter((r) => currentSort == null || (r.units?.sort_order ?? 0) <= currentSort);
+  const sorted = [...inScope].sort((a, b) => {
+    const ac = a.unit_id === currentUnitId ? 0 : 1;
+    const bc = b.unit_id === currentUnitId ? 0 : 1;
+    return ac - bc || (a.units?.sort_order ?? 0) - (b.units?.sort_order ?? 0) || a.created_at.localeCompare(b.created_at);
+  });
+  const words = toCardWords(sorted, today);
+  // Lesbarer Name der Lektion: "Unit 1", "Hello!", "Kaleidoscope", "Across cultures 1" …
+  sorted.forEach((r, i) => {
+    const title = r.units?.title ?? "";
+    words[i].unitLabel = title ? title.split(":")[0].trim() : undefined;
+  });
+  return words;
+}
+
+export const TODAY_SELECT =
+  "id, en, de, accepted_en, unit_id, created_at, vocab_progress(due_date, ease, reps, lapses, correct_count, wrong_count, last_seen_at), units!inner(sort_order, title)";
+export type { TodayRow };

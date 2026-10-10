@@ -5,7 +5,7 @@ import VocabForm from "@/components/VocabForm";
 import VocabManager from "@/components/VocabManager";
 import StartExercise from "@/components/StartExercise";
 import { berlinToday, cardsToday, toCardWords, type ProgressRow } from "@/lib/progress";
-import { SECTION_ORDER, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
+import { sectionsFor, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
 import { parseSettings } from "@/lib/settings";
 
 export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId]">) {
@@ -15,10 +15,10 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
   const supabase = await createClient();
 
   const [{ data: child }, { data: allUnits }, { data: vocab }] = await Promise.all([
-    supabase.from("children").select("id, nickname, settings").eq("id", id).maybeSingle(),
+    supabase.from("children").select("id, nickname, settings, textbooks(sections)").eq("id", id).maybeSingle(),
     supabase
       .from("units")
-      .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind)")
+      .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind, sections)")
       .eq("child_id", id)
       .order("sort_order"),
     supabase
@@ -33,7 +33,8 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
 
   const words = (vocab ?? []) as unknown as Vocab[];
   const isMain = u.textbook_units?.kind === "unit";
-  const sections: Section[] = isMain ? SECTION_ORDER : ["other"];
+  const bookSections = (child as unknown as { textbooks: { sections: string[] } | null }).textbooks?.sections;
+  const sections: Section[] = sectionsFor(bookSections, isMain, u.textbook_units?.sections);
   const today = berlinToday();
   const settings = parseSettings(child.settings);
   const active = ((vocab ?? []) as unknown as (ProgressRow & { excluded: boolean })[]).filter((v) => !v.excluded);
@@ -56,7 +57,7 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
       <div className="unit-actions">
         {active.length > 0 && (
           <Link href={`/kind/${id}/unit/${unitId}/karten`} className="btn">
-            Karteikarten{dueToday > 0 ? ` · ${dueToday}` : ""}
+            Karteikarten{dueToday > 0 ? ` · ${dueToday} heute` : ""}
           </Link>
         )}
         {active.length > 0 && <StartExercise childId={id} unitId={unitId} label="Lückentext" quiet />}
@@ -71,6 +72,7 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
         isMain={isMain}
         words={words.map((w) => ({ id: w.id, en: w.en, de: w.de, section: w.section, excluded: Boolean((w as Vocab & { excluded?: boolean }).excluded) }))}
         units={units.map((x) => ({ id: x.id, title: x.title, isMain: x.textbook_units?.kind === "unit" }))}
+        mainSections={sectionsFor(bookSections, true)}
       />
     </main>
   );

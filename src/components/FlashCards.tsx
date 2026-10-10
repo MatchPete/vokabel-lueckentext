@@ -11,7 +11,16 @@ import { alternativesOnLines, type Result } from "@/lib/exercise";
 import { buildCramRound, buildRound, cardAnswer, gradeCard, gradeFor, isNew, nextDueDate, type CardWord, type Grade } from "@/lib/cards";
 import { DEFAULT_SETTINGS, type Settings } from "@/lib/settings";
 
-type Props = { childId: string; childName: string; unitId: string; words: CardWord[]; today: string; settings?: Settings };
+type Props = {
+  childId: string;
+  childName: string;
+  unitId?: string | null; // fehlt bei "Heute üben" (mehrere Lektionen)
+  scopeLabel?: string; // z. B. "bis Unit 3"
+  cramLabel?: string; // Beschriftung des zweiten Knopfs
+  words: CardWord[];
+  today: string;
+  settings?: Settings;
+};
 type Dir = "de_en" | "en_de";
 type Item = { id: string; kind: "learn" | "ask"; dir: Dir };
 type Phase = "start" | "card" | "done";
@@ -23,7 +32,16 @@ const coin = () => Math.random() < 0.5;
 const REQUEUE_GAP = 3; // falsch beantwortete Wörter kommen nach 3 Karten wieder
 const MAX_REPEATS = 3;
 
-export default function FlashCards({ childId, childName, unitId, words, today, settings = DEFAULT_SETTINGS }: Props) {
+export default function FlashCards({
+  childId,
+  childName,
+  unitId = null,
+  scopeLabel,
+  cramLabel = "Alle Wörter üben (vor einer Abfrage)",
+  words,
+  today,
+  settings = DEFAULT_SETTINGS,
+}: Props) {
   const router = useRouter();
   const byId = useMemo(() => new Map(words.map((w) => [w.id, w])), [words]);
   const regular = useMemo(
@@ -207,7 +225,12 @@ export default function FlashCards({ childId, childName, unitId, words, today, s
   // ------------------------------------------------------------------ Start
   if (phase === "start") {
     const next = nextDueDate(words, today);
+    const total = words.length;
+    const fresh = words.filter(isNew).length;
+    const dueNow = words.filter((w) => !isNew(w) && w.due_date <= today).length;
+    const later = total - fresh - dueNow;
     return (
+      <>
       <section className="card stack">
         {regular.length > 0 ? (
           <>
@@ -233,11 +256,44 @@ export default function FlashCards({ childId, childName, unitId, words, today, s
         )}
         {words.length > 0 && (
           <button type="button" className="btn-quiet" onClick={() => start(buildCramRound(words, settings.roundSize))}>
-            Alle Wörter üben (vor einer Abfrage)
+            {cramLabel}
           </button>
         )}
         <AutoSpeakToggle />
       </section>
+
+      {total > 0 && (
+        <section className="card stack how-cards" aria-labelledby="how-h">
+          <h2 className="subtitle" id="how-h">Deine Wörter {scopeLabel ?? "in dieser Unit"}</h2>
+          <dl className="card-stats">
+            <div><dt>{total}</dt><dd>insgesamt</dd></div>
+            <div><dt>{fresh}</dt><dd>noch neu</dd></div>
+            <div><dt>{dueNow}</dt><dd>heute wiederholen</dd></div>
+            <div><dt>{later}</dt><dd>sitzen erst mal</dd></div>
+          </dl>
+          <details className="change">
+            <summary>Warum nicht alle Wörter auf einmal?</summary>
+            <div className="how-text">
+              <p>
+                Eine Runde enthält nur die Wörter, die <strong>heute dran</strong> sind: alle fälligen Wiederholungen und
+                dazu höchstens {settings.newPerRound} neue Wörter. So kommen neue Wörter nach und nach dazu. Das prägt
+                sich besser ein, als alle auf einmal zu pauken.
+              </p>
+              <p>
+                <strong>Gewusste Wörter</strong> kommen erst nach einigen Tagen wieder, später nach Wochen.{" "}
+                <strong>Schwierige Wörter</strong> kommen öfter, bis sie sitzen.
+              </p>
+              <p>
+                Nach einer Runde kannst du mit <strong>„Weiter üben“</strong> gleich die nächsten neuen Wörter
+                dazunehmen. Vor einer Abfrage in der Schule: die Lektion öffnen und dort{" "}
+                <strong>„Alle Wörter üben“</strong>.
+              </p>
+              <p className="hint">Wie viele Karten und neue Wörter pro Runde, lässt sich in den Einstellungen ändern.</p>
+            </div>
+          </details>
+        </section>
+      )}
+      </>
     );
   }
 
@@ -279,7 +335,7 @@ export default function FlashCards({ childId, childName, unitId, words, today, s
           >
             Weiter üben
           </button>
-          <Link href={`/kind/${childId}/unit/${unitId}`} className="link">Zur Unit</Link>
+          {unitId && <Link href={`/kind/${childId}/unit/${unitId}`} className="link">Zur Unit</Link>}
           <Link href={`/kind/${childId}`} className="link">Zu {childName}</Link>
         </div>
       </section>
@@ -298,7 +354,7 @@ export default function FlashCards({ childId, childName, unitId, words, today, s
 
       {current.kind === "learn" ? (
         <section className="flashcard is-learn">
-          <p className="eyebrow">Neues Wort</p>
+          <p className="eyebrow">Neues Wort{word.unitLabel ? ` · ${word.unitLabel}` : ""}</p>
           <div className="fc-row">
             <p className="fc-en" lang="en">{word.en}</p>
             <SpeakButton text={word.en} />
@@ -310,7 +366,7 @@ export default function FlashCards({ childId, childName, unitId, words, today, s
         </section>
       ) : current.dir === "en_de" ? (
         <section className="flashcard">
-          <p className="eyebrow">Was heißt das auf Deutsch?</p>
+          <p className="eyebrow">Was heißt das auf Deutsch?{word.unitLabel ? ` · ${word.unitLabel}` : ""}</p>
           <div className="fc-row">
             <p className="fc-en" lang="en">{word.en}</p>
             <SpeakButton text={word.en} />
@@ -333,7 +389,7 @@ export default function FlashCards({ childId, childName, unitId, words, today, s
         </section>
       ) : (
         <section className={`flashcard${result ? ` is-${result}` : ""}`}>
-          <p className="eyebrow">Wie heißt das auf Englisch?</p>
+          <p className="eyebrow">Wie heißt das auf Englisch?{word.unitLabel ? ` · ${word.unitLabel}` : ""}</p>
           <p className="fc-de">{alternativesOnLines(word.de)}</p>
 
           <form

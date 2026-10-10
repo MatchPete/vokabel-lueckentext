@@ -130,6 +130,8 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
       try {
         const fd = new FormData();
         fd.append("image", shots[i].blob, `seite-${i + 1}.jpg`);
+        fd.append("child_id", childId);
+        fd.append("unit_id", unitId);
         const res = await fetch("/api/vocab/import", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (res.status === 504 || res.status === 408) {

@@ -9,9 +9,9 @@ import { alternativesOnLines } from "@/lib/exercise";
 type Word = { id: string; en: string; de: string; section: Section; excluded?: boolean };
 
 type UnitOption = { id: string; title: string; isMain: boolean };
-type Props = { childId: string; unitId: string; isMain: boolean; words: Word[]; units: UnitOption[] };
+type Props = { childId: string; unitId: string; isMain: boolean; words: Word[]; units: UnitOption[]; mainSections?: Section[] };
 
-export default function VocabManager({ childId, unitId, isMain, words, units }: Props) {
+export default function VocabManager({ childId, unitId, isMain, words, units, mainSections = SECTION_ORDER }: Props) {
   const router = useRouter();
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -175,7 +175,7 @@ export default function VocabManager({ childId, unitId, isMain, words, units }: 
                   <span>Abschnitt</span>
                   <select value={section} onChange={(e) => setSection(e.target.value as "" | Section)}>
                     <option value="">unverändert lassen</option>
-                    {SECTION_ORDER.map((s) => (
+                    {mainSections.map((s) => (
                       <option key={s} value={s}>{SECTION_LABELS[s]}</option>
                     ))}
                   </select>

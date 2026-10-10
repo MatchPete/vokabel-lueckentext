@@ -34,7 +34,20 @@ const FORM_RULES: Record<GapForm, string> = {
   ing: "ing: -ing form (present progressive)",
   past: "past: simple past form",
   genitive: "genitive: possessive form with 's",
+  participle: "participle: past participle (e.g. seen, written, played), for present perfect, past perfect or passive",
 };
+
+/** Buchprofil aus der Datenbank (textbooks). */
+type Book = {
+  name: string;
+  lernjahr: number;
+  min_level: number;
+  base_forms: string[];
+  profile: string | null;
+  prior_grammar: string | null;
+};
+const DEFAULT_PROFILE =
+  "a German child aged 10–11 in the first year of English at a Bavarian Gymnasium (CEFR A1). Setting: Greenwich / London, UK.";
 
 type VocabRow = {
   id: string;
@@ -94,19 +107,24 @@ function buildPrompt(opts: {
   targets: Target[];
   known: string[];
   unitTitle: string;
+  unitTopics?: string | null;
   textType: TextType;
   allowedForms: GapForm[];
   unlocked: Topic[];
   locked: Topic[];
   level: Level;
+  book: Book;
   feedback?: string;
 }) {
-  const system = `You write short English gap-fill (cloze) texts for a German child aged 10–11 in the first year of English at a Bavarian Gymnasium (textbook level: Green Line 1 Bayern, CEFR A1).
+  const advanced = opts.book.lernjahr >= 2;
+  const system = `You write short English gap-fill (cloze) texts for ${opts.book.profile ?? DEFAULT_PROFILE}
 
 Absolute rules:
 - Use ONLY grammar from the "already learned" list plus the most basic structures. Never use grammar from the "not learned yet" list.
-- Vocabulary: the child is a beginner. Use the target words, the child's known words, the basic word list and first names. Follow the LEVEL rules exactly. No idioms, no rare words.
-- Short, clear sentences. Friendly, everyday situations a 10-year-old enjoys. Setting: Greenwich / London, UK. Invent your own characters with common British first names. Do not use characters or storylines from any textbook.
+- Vocabulary: ${advanced
+    ? `use words a typical student in year ${opts.book.lernjahr} of English knows, plus the target words and the child's known words. No idioms, no rare words.`
+    : "the child is a beginner. Use the target words, the child's known words, the basic word list and first names. Follow the LEVEL rules exactly. No idioms, no rare words."}
+- Short, clear sentences. Everyday situations young people enjoy, set in the places of the textbook unit. Invent your own characters with common British or Irish first names. Do not use characters or storylines from any textbook.
 - Every target word appears EXACTLY ONCE, and ONLY as a gap. Do not use target words anywhere else in the text.
 - Write a gap as {{n|answer|form}} where n is the target number, answer is the exact text the child must type, and form is one of the allowed forms. The answer must be grammatically correct in the sentence.
 - "sb." means somebody and "sth." means something. They are placeholders: replace them with a fitting word in the text, OUTSIDE the gap. Example: "to look at sth." -> "Look at {{3|look at|base}}" is WRONG; correct is "{{3|Look at|base}} the picture!".
@@ -120,11 +138,14 @@ Call the tool submit_exercise with your result.`;
     .map(({ n, vocab }) => `${n}. ${vocab.en} = ${vocab.de}${vocab.word_type ? ` (${vocab.word_type})` : ""}`)
     .join("\n");
 
-  const user = `${LEVELS[opts.level].instructions}
+  const levelText = advanced
+    ? `LEVEL: suitable for a student in year ${opts.book.lernjahr} of English (CEFR A2). Sentences of up to about 15 words. 7 to 10 sentences.${opts.level === 2 ? " Keep it on the easy side." : ""}`
+    : LEVELS[opts.level].instructions;
+  const user = `${levelText}
 The LEVEL rules are more important than the length given for the text type.
 
 Text type: ${TEXT_TYPE_INSTRUCTIONS[opts.textType]}.
-Topic inspiration: the textbook unit "${opts.unitTitle}". Choose a situation that fits the target words naturally.
+Topic inspiration: the textbook unit "${opts.unitTitle}"${opts.unitTopics ? ` (topics of the unit: ${opts.unitTopics})` : ""}. Choose a situation from these topics that fits the target words naturally.
 
 Target words (each exactly once as a gap):
 ${targetList}
@@ -133,7 +154,7 @@ Allowed gap forms:
 ${opts.allowedForms.map((f) => `- ${FORM_RULES[f]}`).join("\n")}
 Prefer the base form. Use another form only where it is the natural choice.
 
-Always allowed basics: ${BASELINE_TEXT}.
+Always allowed basics: ${opts.book.prior_grammar ?? BASELINE_TEXT}.
 
 Grammar already learned in class (German labels):
 ${opts.unlocked.length ? opts.unlocked.map((t) => `- ${t.label_de}`).join("\n") : "- (nothing beyond the basics yet)"}
@@ -144,8 +165,8 @@ ${opts.locked.length ? opts.locked.map((t) => `- ${t.label_de}`).join("\n") : "-
 Words the child already knows from class (use freely):
 ${opts.known.join(", ") || "(none yet)"}
 
-Basic word list (known from primary school, use freely; simple forms like -s plural are fine):
-${CORE_WORDS.join(", ")}${opts.feedback ? `\n\nYour previous attempt had these problems. Avoid them:\n${opts.feedback}` : ""}`;
+${advanced ? "" : `Basic word list (known from primary school, use freely; simple forms like -s plural are fine):
+${CORE_WORDS.join(", ")}`}${opts.feedback ? `\n\nYour previous attempt had these problems. Avoid them:\n${opts.feedback}` : ""}`;
 
   return { system, user };
 }
@@ -245,14 +266,14 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   }
 
   const [{ data: unit }, { data: vocab }, { data: overrides }, { data: lastEx }, { data: child }] = await Promise.all([
-    supabase.from("units").select("id, title, sort_order, textbook_unit_id").eq("id", unitId).eq("child_id", childId).maybeSingle(),
+    supabase.from("units").select("id, title, sort_order, textbook_unit_id, textbook_units(topics)").eq("id", unitId).eq("child_id", childId).maybeSingle(),
     supabase
       .from("vocab")
       .select("id, unit_id, en, de, word_type, accepted_en, excluded, vocab_progress(box, due_date, last_seen_at, ease, correct_count), units!inner(sort_order)")
       .eq("child_id", childId),
     supabase.from("child_grammar_overrides").select("topic_id, enabled").eq("child_id", childId),
     supabase.from("exercises").select("text_type").eq("child_id", childId).order("created_at", { ascending: false }).limit(1),
-    supabase.from("children").select("textbook_id, settings, current:units!children_current_unit_fk(sort_order)").eq("id", childId).maybeSingle(),
+    supabase.from("children").select("textbook_id, settings, current:units!children_current_unit_fk(sort_order), textbooks(name, lernjahr, min_level, base_forms, profile, prior_grammar)").eq("id", childId).maybeSingle(),
   ]);
   if (!unit || !child) throw new GenerateError("Unit nicht gefunden.", 404);
 
@@ -275,9 +296,15 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
   const isUnlocked = (t: TopicRow) => ov.get(t.id) ?? (one(t.textbook_units)?.sort_order ?? 999) <= upTo;
   const unlockedTopics: Topic[] = topics.filter(isUnlocked);
   const locked: Topic[] = topics.filter((t) => !isUnlocked(t) && !BASELINE_CODES.has(t.code));
+  const bookRaw = (child as unknown as { textbooks: Book | Book[] | null }).textbooks;
+  const book: Book = one(bookRaw) ?? { name: "", lernjahr: 1, min_level: 1, base_forms: ["base"], profile: null, prior_grammar: null };
   const allowedForms = Array.from(
-    new Set<GapForm>(["base", ...(unlockedTopics.flatMap((t) => t.forms) as GapForm[])]),
-  );
+    new Set<GapForm>([
+      "base",
+      ...((book.base_forms ?? []) as GapForm[]),
+      ...(unlockedTopics.flatMap((t) => t.forms) as GapForm[]),
+    ]),
+  ).filter((f) => f in FORM_RULES);
 
   // Schwierigkeitsstufe: Wörter, die das Kind schon mindestens einmal richtig hatte,
   // dazu die letzten Lückentext-Ergebnisse. Gespeichert, aber nie geübt, zählt nicht.
@@ -294,7 +321,8 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     .filter((r) => r.max_score)
     .map((r) => (r.score ?? 0) / (r.max_score as number));
   const settings = parseSettings((child as unknown as { settings: unknown }).settings);
-  const level: Level = settings.level === "auto" ? chooseLevel(masteredCount, recentScores) : settings.level;
+  const minLevel = Math.min(3, Math.max(1, book.min_level ?? 1)) as Level;
+  const level: Level = settings.level === "auto" ? chooseLevel(masteredCount, recentScores, minLevel) : settings.level;
   const cfg = LEVELS[level];
 
   // Zielwörter: nur aus der gewählten Unit (fällige und schwierige zuerst).
@@ -336,11 +364,13 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
       targets,
       known,
       unitTitle: unit.title,
+      unitTopics: one((unit as unknown as { textbook_units: { topics: string | null } | { topics: string | null }[] | null }).textbook_units)?.topics ?? null,
       textType,
       allowedForms,
       unlocked: unlockedTopics,
       locked,
       level,
+      book,
       feedback,
     });
 
@@ -383,7 +413,8 @@ export async function generateExercise(supabase: SupabaseClient, childId: string
     const parsed = parse(cleanText, targets, allowedForms);
     const plain = parsed.segments.map((sg) => (sg.t === "text" ? sg.v : sg.answer)).join("");
     const unknown = unknownWords(plain, knownSet);
-    if (unknown.length > cfg.maxUnknown) {
+    const maxUnknown = book.lernjahr >= 2 ? 15 : cfg.maxUnknown;
+    if (unknown.length > maxUnknown) {
       parsed.problems.push(
         `these words are too difficult for this child – replace them with known or basic words (or leave the idea out): ${unknown.join(", ")}`,
       );

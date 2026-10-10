@@ -5,6 +5,8 @@ import { setCurrentUnit } from "@/app/actions";
 import StartExercise from "@/components/StartExercise";
 import MedalWatcher from "@/components/MedalWatcher";
 import { medalInfo, type ChildStats } from "@/lib/stats";
+import { berlinToday, cardsToday, TODAY_SELECT, wordsUpToCurrent, type TodayRow } from "@/lib/progress";
+import { parseSettings } from "@/lib/settings";
 import { unitTag, type Child, type Unit } from "@/lib/types";
 
 export default async function ChildPage(props: PageProps<"/kind/[id]">) {
@@ -12,13 +14,13 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
   const supabase = await createClient();
 
   const [{ data: child }, { data: units }, { data: vocab }, { data: statsRaw }] = await Promise.all([
-    supabase.from("children").select("id, nickname, textbook_id, current_unit_id, created_at").eq("id", id).maybeSingle(),
+    supabase.from("children").select("id, nickname, textbook_id, current_unit_id, created_at, settings").eq("id", id).maybeSingle(),
     supabase
       .from("units")
       .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind)")
       .eq("child_id", id)
       .order("sort_order"),
-    supabase.from("vocab").select("unit_id").eq("child_id", id),
+    supabase.from("vocab").select(TODAY_SELECT + ", excluded").eq("child_id", id),
     supabase.rpc("child_stats", { p_child_id: id }),
   ]);
   if (!child) notFound();
@@ -26,7 +28,7 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
   const kid = child as Child;
   const list = (units ?? []) as unknown as Unit[];
   const counts = new Map<string, number>();
-  for (const v of (vocab ?? []) as { unit_id: string }[]) {
+  for (const v of (vocab ?? []) as unknown as { unit_id: string }[]) {
     counts.set(v.unit_id, (counts.get(v.unit_id) ?? 0) + 1);
   }
   const total = vocab?.length ?? 0;
@@ -35,6 +37,12 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
   const topMedal = medals.earned[medals.earned.length - 1];
   const current = list.find((u) => u.id === kid.current_unit_id);
   const currentOrder = current?.sort_order ?? 0;
+  // "Heute üben": fällige Wörter aller Lektionen bis zur aktuellen + neue der aktuellen
+  const settings = parseSettings((child as unknown as { settings: unknown }).settings);
+  const today = berlinToday();
+  const activeRows = ((vocab ?? []) as unknown as (TodayRow & { excluded: boolean })[]).filter((v) => !v.excluded);
+  const todayWords = wordsUpToCurrent(activeRows, today, kid.current_unit_id, current ? current.sort_order : null);
+  const todayCount = cardsToday(todayWords, today, settings.roundSize, settings.newPerRound);
 
   return (
     <main className="sheet">
@@ -72,13 +80,17 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
             {current.title.replace(/^[^:]+:\s*/, "")}
           </p>
           <div className="current-actions">
-            <Link href={`/kind/${kid.id}/unit/${current.id}/karten`} className="btn">
-              Karteikarten
+            <Link href={`/kind/${kid.id}/heute`} className="btn">
+              Heute üben{todayCount > 0 ? ` · ${todayCount}` : ""}
             </Link>
             <StartExercise childId={kid.id} unitId={current.id} label="Lückentext" quiet />
           </div>
+          <p className="hint">
+            „Heute üben“ mischt fällige Wörter aus allen Lektionen bis hierher mit neuen Wörtern dieser Lektion.
+            Einzelne Lektionen übst du unten über „Alle Abschnitte“.
+          </p>
           <Link href={`/kind/${kid.id}/unit/${current.id}`} className="link">
-            Vokabeln eintragen
+            Vokabeln dieser Lektion eintragen
           </Link>
 
           <details className="change">

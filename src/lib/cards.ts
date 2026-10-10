@@ -14,6 +14,7 @@ export type CardWord = {
   reps: number;
   lapses: number;
   seen: number; // wie oft schon abgefragt (richtig + falsch)
+  unitLabel?: string; // z. B. "U1" – nur in "Heute üben" angezeigt
 };
 
 const ROUND_SIZE = 20; // Standardwerte, über die Einstellungen änderbar
