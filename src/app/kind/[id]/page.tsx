@@ -5,7 +5,8 @@ import { setCurrentUnit } from "@/app/actions";
 import StartExercise from "@/components/StartExercise";
 import MedalWatcher from "@/components/MedalWatcher";
 import { medalInfo, type ChildStats } from "@/lib/stats";
-import { berlinToday, cardsToday, TODAY_SELECT, wordsUpToCurrent, type TodayRow } from "@/lib/progress";
+import { berlinToday, cardsBreakdown, cardsToday, TODAY_SELECT, wordsUpToCurrent, type TodayRow } from "@/lib/progress";
+import CardsInfo from "@/components/CardsInfo";
 import { parseSettings } from "@/lib/settings";
 import { unitTag, type Child, type Unit } from "@/lib/types";
 
@@ -43,6 +44,7 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
   const activeRows = ((vocab ?? []) as unknown as (TodayRow & { excluded: boolean })[]).filter((v) => !v.excluded);
   const todayWords = wordsUpToCurrent(activeRows, today, kid.current_unit_id, current ? current.sort_order : null);
   const todayCount = cardsToday(todayWords, today, settings.roundSize, settings.newPerRound);
+  const todayBreakdown = cardsBreakdown(todayWords, today, settings.roundSize, settings.newPerRound);
 
   return (
     <main className="sheet">
@@ -80,9 +82,12 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
             {current.title.replace(/^[^:]+:\s*/, "")}
           </p>
           <div className="current-actions">
-            <Link href={`/kind/${kid.id}/heute`} className="btn">
-              Heute üben{todayCount > 0 ? ` · ${todayCount}` : ""}
-            </Link>
+            <span className="with-info">
+              <Link href={`/kind/${kid.id}/heute`} className="btn">
+                Heute üben{todayCount > 0 ? ` · ${todayCount}` : ""}
+              </Link>
+              <CardsInfo b={todayBreakdown} scope={`allen Lektionen bis ${current.title.split(":")[0]}`} />
+            </span>
             <StartExercise childId={kid.id} unitId={current.id} label="Lückentext" quiet />
           </div>
           <p className="hint">

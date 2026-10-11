@@ -76,3 +76,14 @@ export function wordsUpToCurrent(rows: TodayRow[], today: string, currentUnitId:
 export const TODAY_SELECT =
   "id, en, de, accepted_en, unit_id, created_at, vocab_progress(due_date, ease, reps, lapses, correct_count, wrong_count, last_seen_at), units!inner(sort_order, title)";
 export type { TodayRow };
+
+/** Aufschlüsselung, wie die heutige Karteikarten-Runde zustande kommt (für die Erklärung). */
+export function cardsBreakdown(words: CardWord[], today: string, roundSize = 20, newPerRound = 8) {
+  const fresh = words.filter(isNew).length;
+  const dueNow = words.filter((w) => !isNew(w) && w.due_date <= today).length;
+  const later = words.length - fresh - dueNow;
+  const dueToday = Math.min(dueNow, roundSize);
+  const newToday = Math.min(fresh, newPerRound, roundSize - dueToday);
+  return { total: words.length, fresh, dueNow, later, dueToday, newToday, inRound: dueToday + newToday, roundSize, newPerRound };
+}
+export type CardsBreakdown = ReturnType<typeof cardsBreakdown>;

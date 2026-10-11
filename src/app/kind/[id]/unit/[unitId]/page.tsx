@@ -4,9 +4,10 @@ import { createClient } from "@/lib/supabase/server";
 import VocabForm from "@/components/VocabForm";
 import VocabManager from "@/components/VocabManager";
 import StartExercise from "@/components/StartExercise";
-import { berlinToday, cardsToday, toCardWords, type ProgressRow } from "@/lib/progress";
+import { berlinToday, cardsBreakdown, cardsToday, toCardWords, type ProgressRow } from "@/lib/progress";
 import { sectionsFor, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
 import { parseSettings } from "@/lib/settings";
+import CardsInfo from "@/components/CardsInfo";
 
 export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId]">) {
   const { id, unitId } = await props.params;
@@ -38,7 +39,10 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
   const today = berlinToday();
   const settings = parseSettings(child.settings);
   const active = ((vocab ?? []) as unknown as (ProgressRow & { excluded: boolean })[]).filter((v) => !v.excluded);
-  const dueToday = cardsToday(toCardWords(active, today), today, settings.roundSize, settings.newPerRound);
+  const activeWords = toCardWords(active, today);
+  const dueToday = cardsToday(activeWords, today, settings.roundSize, settings.newPerRound);
+  const breakdown = cardsBreakdown(activeWords, today, settings.roundSize, settings.newPerRound);
+  const excludedCount = (vocab ?? []).length - active.length;
 
   return (
     <main className="sheet">
@@ -56,9 +60,12 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
 
       <div className="unit-actions">
         {active.length > 0 && (
-          <Link href={`/kind/${id}/unit/${unitId}/karten`} className="btn">
-            Karteikarten{dueToday > 0 ? ` · ${dueToday} heute` : ""}
-          </Link>
+          <span className="with-info">
+            <Link href={`/kind/${id}/unit/${unitId}/karten`} className="btn">
+              Karteikarten{dueToday > 0 ? ` · ${dueToday} heute` : ""}
+            </Link>
+            <CardsInfo b={breakdown} excluded={excludedCount} />
+          </span>
         )}
         {active.length > 0 && <StartExercise childId={id} unitId={unitId} label="Lückentext" quiet />}
         <Link href={`/kind/${id}/unit/${unitId}/foto`} className="btn-quiet">Seiten fotografieren</Link>
