@@ -1,0 +1,5 @@
+-- 012_greenline_bayern_toc.sql
+-- Green Line 1 Bayern nach dem Inhaltsverzeichnis des Schülerbuchs:
+-- Abschnitte und Themen pro Unit, Grammatik Unit 1 ergänzt (wh-questions with be),
+-- Unit 6 bereinigt ("Haupt- und Nebensätze" steht nicht im Buch) und um Datum/Ordnungszahlen ergänzt.
+-- (Vollständiges SQL wie in der Datenbank angewendet; siehe Migration "greenline_bayern_toc".)

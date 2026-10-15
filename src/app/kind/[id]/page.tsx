@@ -94,9 +94,14 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
             „Heute üben“ mischt fällige Wörter aus allen Lektionen bis hierher mit neuen Wörtern dieser Lektion.
             Einzelne Lektionen übst du unten über „Alle Abschnitte“.
           </p>
-          <Link href={`/kind/${kid.id}/unit/${current.id}`} className="link">
-            Vokabeln dieser Lektion eintragen
-          </Link>
+          <div className="current-links">
+            <Link href={`/kind/${kid.id}/neueste`} className="link">
+              Neueste Vokabeln üben
+            </Link>
+            <Link href={`/kind/${kid.id}/unit/${current.id}`} className="link">
+              Vokabeln dieser Lektion eintragen
+            </Link>
+          </div>
 
           <details className="change">
             <summary>Andere Unit ist dran</summary>

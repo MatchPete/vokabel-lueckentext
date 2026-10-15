@@ -170,7 +170,14 @@ export async function flagExercise(formData: FormData) {
 // ---------------------------------------------------------------------------
 // Foto-Import: mehrere Vokabeln auf einmal speichern
 // ---------------------------------------------------------------------------
-export type ImportRow = { en: string; de: string; section: Section; word_type: string | null; example_en: string | null };
+export type ImportRow = {
+  en: string;
+  de: string;
+  section: Section;
+  word_type: string | null;
+  example_en: string | null;
+  unit_id?: string; // Lektion pro Vokabel (beim Foto vorgewählt); sonst die Lektion des Aufrufs
+};
 export type ImportResult = { ok: true; inserted: number; skipped: number } | { ok: false; error: string };
 
 const WORD_TYPES = new Set(["noun", "verb", "adjective", "adverb", "phrase", "other"]);
@@ -180,13 +187,10 @@ export async function saveVocabBatch(input: { childId: string; unitId: string; r
   if (input.rows.length > 300) return { ok: false, error: "Zu viele Vokabeln auf einmal." };
 
   const supabase = await createClient();
-  const { data: unit } = await supabase
-    .from("units")
-    .select("id")
-    .eq("id", input.unitId)
-    .eq("child_id", input.childId)
-    .maybeSingle();
-  if (!unit) return { ok: false, error: "Unit nicht gefunden." };
+  // Alle Lektionen des Kindes: jede Vokabel darf nur in eine davon
+  const { data: units } = await supabase.from("units").select("id").eq("child_id", input.childId);
+  const validUnits = new Set((units ?? []).map((u) => u.id));
+  if (!validUnits.has(input.unitId)) return { ok: false, error: "Unit nicht gefunden." };
 
   const { data: existing } = await supabase.from("vocab").select("en, de").eq("child_id", input.childId);
   const key = (en: string, de: string) => `${normalize(en)}|${normalize(de)}`;
@@ -204,7 +208,7 @@ export async function saveVocabBatch(input: { childId: string; unitId: string; r
     seen.add(key(en, de));
     toInsert.push({
       child_id: input.childId,
-      unit_id: input.unitId,
+      unit_id: r.unit_id && validUnits.has(r.unit_id) ? r.unit_id : input.unitId,
       en,
       de,
       section: (SECTION_ORDER as string[]).includes(r.section) ? r.section : "other",
@@ -218,8 +222,7 @@ export async function saveVocabBatch(input: { childId: string; unitId: string; r
     if (error) return { ok: false, error: "Speichern hat nicht geklappt. Bitte noch einmal versuchen." };
   }
 
-  revalidatePath(`/kind/${input.childId}/unit/${input.unitId}`);
-  revalidatePath(`/kind/${input.childId}`);
+  revalidatePath(`/kind/${input.childId}`, "layout");
   return { ok: true, inserted: toInsert.length, skipped };
 }
 

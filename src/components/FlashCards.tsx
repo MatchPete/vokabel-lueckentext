@@ -17,6 +17,7 @@ type Props = {
   unitId?: string | null; // fehlt bei "Heute üben" (mehrere Lektionen)
   scopeLabel?: string; // z. B. "bis Unit 3"
   cramLabel?: string; // Beschriftung des zweiten Knopfs
+  fixedRound?: boolean; // alle übergebenen Wörter abfragen (z. B. "Neueste Vokabeln"), unabhängig von Fälligkeit
   words: CardWord[];
   today: string;
   settings?: Settings;
@@ -38,6 +39,7 @@ export default function FlashCards({
   unitId = null,
   scopeLabel,
   cramLabel = "Alle Wörter üben (vor einer Abfrage)",
+  fixedRound = false,
   words,
   today,
   settings = DEFAULT_SETTINGS,
@@ -45,8 +47,8 @@ export default function FlashCards({
   const router = useRouter();
   const byId = useMemo(() => new Map(words.map((w) => [w.id, w])), [words]);
   const regular = useMemo(
-    () => buildRound(words, today, settings.roundSize, settings.newPerRound),
-    [words, today, settings.roundSize, settings.newPerRound],
+    () => (fixedRound ? words : buildRound(words, today, settings.roundSize, settings.newPerRound)),
+    [fixedRound, words, today, settings.roundSize, settings.newPerRound],
   );
   const gradeOpts = { caseSensitive: settings.caseSensitive, typoCountsCorrect: settings.typoCountsCorrect };
   const pickDir = (): Dir =>
@@ -238,7 +240,7 @@ export default function FlashCards({
             <p className="lead">
               {newCount > 0 && `${newCount} neu`}
               {newCount > 0 && regular.length - newCount > 0 && ", "}
-              {regular.length - newCount > 0 && `${regular.length - newCount} zum Wiederholen`}
+              {regular.length - newCount > 0 && `${regular.length - newCount} ${fixedRound ? "schon geübt" : "zum Wiederholen"}`}
             </p>
             <button type="button" className="btn" onClick={() => start(regular)}>Los geht&apos;s</button>
           </>
@@ -254,7 +256,7 @@ export default function FlashCards({
             </p>
           </>
         )}
-        {words.length > 0 && (
+        {words.length > 0 && !fixedRound && (
           <button type="button" className="btn-quiet" onClick={() => start(buildCramRound(words, settings.roundSize))}>
             {cramLabel}
           </button>
@@ -262,7 +264,7 @@ export default function FlashCards({
         <AutoSpeakToggle />
       </section>
 
-      {total > 0 && (
+      {total > 0 && !fixedRound && (
         <section className="card stack how-cards" aria-labelledby="how-h">
           <h2 className="subtitle" id="how-h">Deine Wörter {scopeLabel ?? "in dieser Unit"}</h2>
           <dl className="card-stats">

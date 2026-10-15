@@ -509,6 +509,44 @@ body {
 .rate-almost { color: #8a5a0a; border-color: #e2a33a; }
 .rate-wrong { color: var(--red); border-color: var(--red); }
 
+/* Foto-Import: Bestätigung und fester Knopf */
+.camera { position: relative; }
+.camera-flash { position: absolute; inset: 0; background: #fff; border-radius: inherit; pointer-events: none; animation: cam-flash 0.35s ease-out forwards; z-index: 2; }
+@keyframes cam-flash { from { opacity: 0.85; } to { opacity: 0; } }
+.toast {
+  position: fixed; left: 50%; bottom: calc(6.5rem + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  z-index: 50; margin: 0; max-width: calc(100% - 2rem); padding: 0.7rem 1.1rem; border-radius: 999px;
+  background: var(--green); color: #fff; font-weight: 700; font-size: 0.95rem; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  animation: toast-in 0.2s ease-out;
+  pointer-events: none; /* Tipps gehen durch die Meldung hindurch, z. B. auf den Auslöser */
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 0.5rem); } to { opacity: 1; transform: translate(-50%, 0); } }
+.capture-bar { grid-column: 1 / -1; z-index: 5; }
+.capture-bar .hint { margin: 0; text-align: center; font-size: 0.85rem; }
+
+/* Foto-Import: Ziel vorwählen */
+.target { gap: 0.6rem; }
+.target-head { margin: 0; font-weight: 700; color: var(--ink); }
+.target-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.5rem 0.75rem; }
+.target .field span { font-size: 0.85rem; }
+.capture > .camera { max-height: min(62dvh, calc(100dvh - 17rem)); }
+.target select { font: inherit; width: 100%; padding: 0.5rem; border: 1px solid var(--rule); border-radius: 8px; background: #fff; color: var(--text); }
+.thumbs li { position: relative; }
+.thumb-tag {
+  position: absolute; left: 4px; right: 4px; bottom: 4px; font-size: 0.7rem; line-height: 1.2; text-align: center;
+  background: rgba(29, 60, 143, 0.88); color: #fff; border-radius: 6px; padding: 2px 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.review-meta select { max-width: 48%; }
+
+/* Neueste Vokabeln: Anzahl wählen */
+.seg-link {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 3rem; min-height: 2.5rem;
+  padding: 0.4rem 0.9rem; border: 1.5px solid #c9d4ea; border-radius: 999px; color: var(--ink); text-decoration: none; font-weight: 700;
+}
+.seg-link.is-on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.current-links { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+
 /* Info-Knopf an Karteikarten / Heute üben */
 .with-info { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .info-btn {

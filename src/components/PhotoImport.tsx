@@ -6,9 +6,14 @@ import { saveVocabBatch, type ImportRow } from "@/app/actions";
 import { normalize } from "@/lib/exercise";
 import { SECTION_LABELS, type Section } from "@/lib/types";
 
-type Shot = { id: number; blob: Blob; url: string };
-type Row = ImportRow & { key: number; include: boolean; duplicate: "saved" | "batch" | null; uncertain: boolean };
-type Props = { childId: string; unitId: string; sections: Section[]; existingKeys: string[] };
+type Target = Section | "auto";
+type Shot = { id: number; blob: Blob; url: string; unitId: string; section: Target };
+type Row = ImportRow & { key: number; include: boolean; duplicate: "saved" | "batch" | null; uncertain: boolean; unit_id: string };
+type UnitOption = { id: string; title: string; sections: Section[] };
+type Props = { childId: string; unitId: string; sections: Section[]; units?: UnitOption[]; existingKeys: string[] };
+
+/** "Unit 1: It's fun at home" -> "Unit 1" */
+const shortTitle = (t: string) => t.split(":")[0].trim();
 
 const MAX_EDGE = 1600;
 
@@ -26,14 +31,28 @@ async function toJpeg(source: CanvasImageSource, width: number, height: number):
   );
 }
 
-export default function PhotoImport({ childId, unitId, sections, existingKeys }: Props) {
+export default function PhotoImport({ childId, unitId, sections, units, existingKeys }: Props) {
   const router = useRouter();
+  const unitList: UnitOption[] = units && units.length ? units : [{ id: unitId, title: "", sections }];
+  const unitById = new Map(unitList.map((u) => [u.id, u]));
+  const sectionsOf = (id: string) => unitById.get(id)?.sections ?? sections;
+  // Wohin gehören die nächsten Fotos? Gilt ab dem nächsten Foto, bis es geändert wird.
+  const [targetUnit, setTargetUnit] = useState(unitId);
+  const [targetSection, setTargetSection] = useState<Target>("auto");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nextId = useRef(1);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [shots, setShots] = useState<Shot[]>([]);
+  // Kurze Bestätigung nach jedem Foto
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const [flash, setFlash] = useState(0);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countRef = useRef(0); // aktuelle Anzahl Fotos (auch bei mehreren Bildern aus der Galerie richtig)
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
   const [step, setStep] = useState<"capture" | "processing" | "review">("capture");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [pageErrors, setPageErrors] = useState<string[]>([]);
@@ -88,6 +107,7 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
   useEffect(() => () => shotsRef.current.forEach((s) => URL.revokeObjectURL(s.url)), []);
 
   function removeShot(id: number) {
+    countRef.current = Math.max(0, countRef.current - 1);
     setShots((all) => {
       const hit = all.find((x) => x.id === id);
       if (hit) URL.revokeObjectURL(hit.url);
@@ -96,7 +116,22 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
   }
 
   function addShot(blob: Blob) {
-    setShots((s) => [...s, { id: nextId.current++, blob, url: URL.createObjectURL(blob) }]);
+    const id = nextId.current++;
+    setShots((s) => [...s, { id, blob, url: URL.createObjectURL(blob), unitId: targetUnit, section: targetSection }]);
+    // Bestätigung: Blitz auf dem Kamerabild, Meldung, kurze Vibration (wo möglich)
+    const where = `${unitList.length > 1 ? `${shortTitle(unitById.get(targetUnit)?.title ?? "")} · ` : ""}${
+      targetSection === "auto" ? "Abschnitt automatisch" : SECTION_LABELS[targetSection]
+    }`;
+    countRef.current += 1;
+    setToast({ id, text: `Foto ${countRef.current} gemacht · ${where}` });
+    setFlash((f) => f + 1);
+    try {
+      navigator.vibrate?.(40);
+    } catch {
+      /* nicht überall verfügbar */
+    }
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2500);
   }
 
   async function capture() {
@@ -124,14 +159,19 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
     const errors: string[] = [];
     const found: Row[] = [];
     let lastSection: Section | null = null;
+    let lastUnit: string | null = null;
     let key = 0;
 
     for (let i = 0; i < shots.length; i++) {
+      const shot = shots[i];
+      const secs = sectionsOf(shot.unitId);
+      if (shot.unitId !== lastUnit) lastSection = null; // neue Lektion: Abschnitt neu bestimmen
+      lastUnit = shot.unitId;
       try {
         const fd = new FormData();
-        fd.append("image", shots[i].blob, `seite-${i + 1}.jpg`);
+        fd.append("image", shot.blob, `seite-${i + 1}.jpg`);
         fd.append("child_id", childId);
-        fd.append("unit_id", unitId);
+        fd.append("unit_id", shot.unitId);
         const res = await fetch("/api/vocab/import", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (res.status === 504 || res.status === 408) {
@@ -139,10 +179,16 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
         }
         if (!res.ok) throw new Error(data.error || "Auswertung fehlgeschlagen.");
         for (const e of data.entries as Array<{ en: string; de: string; section: Section | null; word_type: string | null; example_en: string | null; uncertain: boolean }>) {
-          // Ohne erkennbare Überschrift gilt der zuletzt gesehene Abschnitt (auch über Seitengrenzen)
-          const section: Section = e.section && sections.includes(e.section) ? e.section : (lastSection ?? sections[0]);
+          // Vorgewählter Abschnitt hat Vorrang; sonst Überschrift im Foto,
+          // ohne Überschrift der zuletzt gesehene Abschnitt (auch über Seitengrenzen)
+          const section: Section =
+            shot.section !== "auto"
+              ? shot.section
+              : e.section && secs.includes(e.section)
+                ? e.section
+                : (lastSection ?? secs[0]);
           lastSection = section;
-          found.push({ ...e, section, key: key++, include: true, duplicate: null });
+          found.push({ ...e, section, unit_id: shot.unitId, key: key++, include: true, duplicate: null });
         }
         if (data.truncated) errors.push(`Seite ${i + 1}: Sehr viele Einträge, eventuell fehlen die letzten. Bitte prüfen.`);
       } catch (err) {
@@ -176,10 +222,14 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
     setSaveError(null);
     const selected = rows
       .filter((r) => r.include)
-      .map(({ en, de, section, word_type, example_en }) => ({ en, de, section, word_type, example_en }));
+      .map(({ en, de, section, word_type, example_en, unit_id }) => ({ en, de, section, word_type, example_en, unit_id }));
+    // Nach dem Speichern zur Lektion, in der die meisten neuen Vokabeln gelandet sind
+    const counts = new Map<string, number>();
+    selected.forEach((r) => counts.set(r.unit_id, (counts.get(r.unit_id) ?? 0) + 1));
+    const goTo = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? unitId;
     startSaving(async () => {
       const res = await saveVocabBatch({ childId, unitId, rows: selected });
-      if (res.ok) router.push(`/kind/${childId}/unit/${unitId}?importiert=${res.inserted}`);
+      if (res.ok) router.push(`/kind/${childId}/unit/${goTo}?importiert=${res.inserted}`);
       else setSaveError(res.error);
     });
   }
@@ -239,9 +289,24 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
                   autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
                 />
                 <div className="review-meta">
-                  {sections.length > 1 && (
+                  {unitList.length > 1 && (
+                    <select
+                      value={r.unit_id}
+                      aria-label="Lektion"
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        const secs = sectionsOf(next);
+                        update(r.key, { unit_id: next, section: secs.includes(r.section) ? r.section : secs[0] });
+                      }}
+                    >
+                      {unitList.map((u) => (
+                        <option key={u.id} value={u.id}>{shortTitle(u.title)}</option>
+                      ))}
+                    </select>
+                  )}
+                  {sectionsOf(r.unit_id).length > 1 && (
                     <select value={r.section} aria-label="Abschnitt" onChange={(e) => update(r.key, { section: e.target.value as Section })}>
-                      {sections.map((s) => (
+                      {sectionsOf(r.unit_id).map((s) => (
                         <option key={s} value={s}>{SECTION_LABELS[s]}</option>
                       ))}
                     </select>
@@ -267,7 +332,43 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
 
   return (
     <div className="capture">
+      <section className="target card" aria-label="Wohin gehören die Fotos?">
+        <p className="target-head">Wohin gehören die nächsten Fotos?</p>
+        <div className="target-fields">
+          {unitList.length > 1 && (
+            <label className="field">
+              <span>Lektion</span>
+              <select
+                value={targetUnit}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTargetUnit(next);
+                  setTargetSection("auto"); // neue Lektion: Abschnitt wieder automatisch, bis neu gewählt
+                }}
+              >
+                {unitList.map((u) => (
+                  <option key={u.id} value={u.id}>{u.title}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {sectionsOf(targetUnit).length > 1 && (
+            <label className="field">
+              <span>Abschnitt</span>
+              <select value={targetSection} onChange={(e) => setTargetSection(e.target.value as Target)}>
+                <option value="auto">Automatisch erkennen</option>
+                {sectionsOf(targetUnit).map((sec) => (
+                  <option key={sec} value={sec}>{SECTION_LABELS[sec]}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+        {shots.length > 0 && <p className="hint">Gilt für die nächsten Fotos. Schon gemachte Fotos behalten ihre Auswahl.</p>}
+      </section>
+
       <section className="camera">
+        {flash > 0 && <div key={flash} className="camera-flash" aria-hidden />}
         <video ref={videoRef} playsInline muted className={cameraOn ? "" : "is-hidden"} />
         {cameraOn && <div className="camera-frame" aria-hidden />}
         {!cameraOn && !cameraError && <p className="camera-placeholder">Kamera wird gestartet …</p>}
@@ -322,14 +423,30 @@ export default function PhotoImport({ childId, unitId, sections, existingKeys }:
               <li key={s.id}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={s.url} alt={`Seite ${i + 1}`} />
+                <span className="thumb-tag">
+                  {unitList.length > 1 ? `${shortTitle(unitById.get(s.unitId)?.title ?? "")} · ` : ""}
+                  {s.section === "auto" ? "auto" : SECTION_LABELS[s.section]}
+                </span>
                 <button type="button" className="thumb-del" aria-label={`Seite ${i + 1} entfernen`} onClick={() => removeShot(s.id)}>×</button>
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {toast && (
+        <p key={toast.id} className="toast" role="status" aria-live="polite">
+          <span aria-hidden>✓</span> {toast.text}
+        </p>
+      )}
+
+      {shots.length > 0 && (
+        <div className="check-bar capture-bar">
           <button type="button" className="btn" onClick={analyze}>
             {shots.length === 1 ? "1 Seite auswerten" : `${shots.length} Seiten auswerten`}
           </button>
-        </section>
+          <p className="hint">Danach siehst du alle gefundenen Vokabeln und kannst sie prüfen und speichern.</p>
+        </div>
       )}
     </div>
   );
