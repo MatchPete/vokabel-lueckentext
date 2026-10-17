@@ -15,7 +15,7 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
   const supabase = await createClient();
 
   const [{ data: child }, { data: units }, { data: vocab }, { data: statsRaw }] = await Promise.all([
-    supabase.from("children").select("id, nickname, textbook_id, current_unit_id, created_at, settings").eq("id", id).maybeSingle(),
+    supabase.from("children").select("id, nickname, textbook_id, current_unit_id, created_at, settings, textbooks(name)").eq("id", id).maybeSingle(),
     supabase
       .from("units")
       .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind)")
@@ -98,6 +98,11 @@ export default async function ChildPage(props: PageProps<"/kind/[id]">) {
             <Link href={`/kind/${kid.id}/neueste`} className="link">
               Neueste Vokabeln üben
             </Link>
+            {(child as unknown as { textbooks: { name: string } | null }).textbooks?.name === "Green Line 1 Bayern" && (
+              <Link href={`/kind/${kid.id}/grammatik`} className="link">
+                Grammatik üben
+              </Link>
+            )}
             <Link href={`/kind/${kid.id}/unit/${current.id}`} className="link">
               Vokabeln dieser Lektion eintragen
             </Link>

@@ -8,6 +8,7 @@ import { berlinToday, cardsBreakdown, cardsToday, toCardWords, type ProgressRow 
 import { sectionsFor, unitTag, type Section, type Unit, type Vocab } from "@/lib/types";
 import { parseSettings } from "@/lib/settings";
 import CardsInfo from "@/components/CardsInfo";
+import { CHAPTERS } from "@/lib/grammar/catalog";
 
 export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId]">) {
   const { id, unitId } = await props.params;
@@ -16,7 +17,7 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
   const supabase = await createClient();
 
   const [{ data: child }, { data: allUnits }, { data: vocab }] = await Promise.all([
-    supabase.from("children").select("id, nickname, settings, textbooks(sections)").eq("id", id).maybeSingle(),
+    supabase.from("children").select("id, nickname, settings, textbooks(name, sections)").eq("id", id).maybeSingle(),
     supabase
       .from("units")
       .select("id, child_id, textbook_unit_id, title, sort_order, textbook_units(code, kind, sections)")
@@ -34,6 +35,9 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
 
   const words = (vocab ?? []) as unknown as Vocab[];
   const isMain = u.textbook_units?.kind === "unit";
+  const bookName = (child as unknown as { textbooks: { name: string } | null }).textbooks?.name;
+  const unitGrammar =
+    bookName === "Green Line 1 Bayern" ? CHAPTERS.filter((c) => c.unit === u.textbook_units?.code) : [];
   const bookSections = (child as unknown as { textbooks: { sections: string[] } | null }).textbooks?.sections;
   const sections: Section[] = sectionsFor(bookSections, isMain, u.textbook_units?.sections);
   const today = berlinToday();
@@ -70,6 +74,22 @@ export default async function UnitPage(props: PageProps<"/kind/[id]/unit/[unitId
         {active.length > 0 && <StartExercise childId={id} unitId={unitId} label="Lückentext" quiet />}
         <Link href={`/kind/${id}/unit/${unitId}/foto`} className="btn-quiet">Seiten fotografieren</Link>
       </div>
+
+      {unitGrammar.length > 0 && (
+        <section className="card stack">
+          <h2 className="subtitle">Grammatik dieser Unit</h2>
+          <ul className="g-list">
+            {unitGrammar.map((c) => (
+              <li key={c.code}>
+                <Link href={`/kind/${id}/grammatik/${c.code}`} className="g-row">
+                  <span className="g-code">{c.code}</span>
+                  <span className="g-title">{c.title}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <VocabForm childId={id} unitId={unitId} sections={sections} />
 

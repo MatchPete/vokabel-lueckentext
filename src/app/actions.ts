@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { SECTION_ORDER, type Section } from "@/lib/types";
 import { gapsOf, grade, normalize, type Segment } from "@/lib/exercise";
 import { parseSettings, type Settings } from "@/lib/settings";
+import { gradeItem, type GrammarItem } from "@/lib/grammar/check";
+import { CHAPTER_BY_CODE } from "@/lib/grammar/catalog";
 
 export async function createChild(formData: FormData) {
   const nickname = String(formData.get("nickname") ?? "").trim();
@@ -347,4 +349,46 @@ export async function setVocabExcluded(input: { childId: string; vocabIds: strin
   if (error) return { ok: false, error: "Das hat nicht geklappt." };
   revalidatePath(`/kind/${input.childId}`, "layout");
   return { ok: true, count: data?.length ?? 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Grammatikübungen: Ergebnis speichern (Bewertung erfolgt hier erneut auf dem Server)
+// ---------------------------------------------------------------------------
+
+export async function saveGrammarAttempt(input: {
+  exerciseId: string;
+  firstTry: string[];
+  secondTry: (string | null)[];
+}): Promise<{ ok: boolean; score?: number; max?: number; error?: string }> {
+  const supabase = await createClient();
+  const { data: ex } = await supabase
+    .from("grammar_exercises")
+    .select("id, child_id, chapter, items")
+    .eq("id", input.exerciseId)
+    .maybeSingle();
+  if (!ex) return { ok: false, error: "Übung nicht gefunden." };
+  const ch = CHAPTER_BY_CODE.get(ex.chapter);
+  if (!ch) return { ok: false, error: "Unbekanntes Kapitel." };
+  const items = ex.items as GrammarItem[];
+  const first = items.map((it, i) => gradeItem(String(input.firstTry?.[i] ?? ""), it, ch.check));
+  const second = items.map((it, i) =>
+    first[i] ? null : input.secondTry?.[i] != null ? gradeItem(String(input.secondTry[i]), it, ch.check) : false,
+  );
+  const score = first.filter(Boolean).length;
+  const { error } = await supabase.from("grammar_attempts").insert({
+    child_id: ex.child_id,
+    exercise_id: ex.id,
+    chapter: ex.chapter,
+    score,
+    max_score: items.length,
+    answers: items.map((_, i) => ({
+      first: String(input.firstTry?.[i] ?? ""),
+      first_ok: first[i],
+      second: input.secondTry?.[i] ?? null,
+      second_ok: second[i],
+    })),
+  });
+  if (error) return { ok: false, error: "Speichern hat nicht geklappt." };
+  revalidatePath(`/kind/${ex.child_id}/grammatik`, "layout");
+  return { ok: true, score, max: items.length };
 }

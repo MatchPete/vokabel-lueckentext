@@ -566,6 +566,39 @@ body {
 .card-stats dd { margin: 0; font-size: 0.8rem; color: var(--pencil); line-height: 1.25; }
 .how-text p { margin: 0 0 0.6rem; font-size: 1rem; line-height: 1.5; }
 
+/* Grammatik */
+.g-unit.is-locked { opacity: 0.55; }
+.g-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+.g-list li { border-bottom: 1px solid var(--rule); }
+.g-row { display: grid; grid-template-columns: 3rem 1fr auto; gap: 0.75rem; align-items: center; padding: 0.6rem 0.25rem; color: var(--text); text-decoration: none; }
+a.g-row:hover { background: var(--ink-tint); }
+.g-code { font-weight: 700; color: var(--ink); }
+.g-title { line-height: 1.35; }
+.g-score { font-size: 0.85rem; font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 999px; background: #eef1f7; color: var(--pencil); }
+.g-score.is-full { background: #dcefe4; color: var(--green); }
+.g-score.is-good { background: #e9f1e0; color: #4b6b1f; }
+.g-score.is-low { background: #fbe9e7; color: var(--red); }
+.g-rule-list { margin: 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 0.4rem; line-height: 1.5; }
+.g-examples { margin: 0; display: flex; flex-direction: column; gap: 0.2rem; color: var(--ink); font-weight: 700; }
+.g-history { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+.g-items { margin: 0; padding-left: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
+.g-item { line-height: 2; }
+.g-sentence { margin: 0; font-size: 1.15rem; }
+.g-input {
+  font: inherit; font-weight: 700; color: var(--ink); border: 0; border-bottom: 2px solid var(--ink-soft);
+  background: rgba(29, 60, 143, 0.06); padding: 0 0.3rem; margin: 0 0.15rem; border-radius: 4px 4px 0 0; max-width: 100%;
+}
+.g-input:focus { outline: 2px solid var(--ink); outline-offset: 1px; }
+.g-cue { color: var(--pencil-light); font-style: italic; }
+.g-item.is-correct .g-input { border-color: var(--green); color: var(--green); background: #e7f4ec; }
+.g-item.is-retry .g-input { border-color: var(--red); background: #fdeeee; }
+.g-item.is-wrong .g-input { border-color: var(--red); color: var(--red); text-decoration: line-through; }
+.g-item.is-almost .g-input { border-color: #e2a33a; color: #8a5a0a; }
+.g-tip { margin: 0.2rem 0 0; font-size: 0.95rem; color: #8a5a0a; line-height: 1.45; }
+.g-solution { margin: 0.2rem 0 0; font-size: 0.95rem; line-height: 1.45; }
+.g-solution strong { color: var(--green); }
+.g-explain { color: var(--pencil); }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
